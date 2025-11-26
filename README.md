@@ -189,6 +189,37 @@ This project is based on the original mark/setd utilities by Sunil William Savka
 
 Current version: 2.0
 
+## Testing
+
+The project includes a comprehensive test suite that runs on multiple operating systems and shells:
+
+### Local Testing
+
+```bash
+# Run all tests
+make test
+
+# Test specific OS
+make test-debian
+make test-ubuntu
+
+# Test specific shell
+make test-bash
+make test-zsh
+```
+
+See `tests/README.md` for detailed testing documentation.
+
+### CI/CD Testing
+
+GitHub Actions workflows automatically test the project on:
+- **Linux**: Ubuntu (multiple versions)
+- **Windows**: Windows Latest (via MSYS2/MinGW)
+- **macOS**: macOS Latest
+- **Docker**: Multiple Linux distributions
+
+Workflows run on push and pull requests. See `.github/workflows/` for workflow definitions.
+
 ## Contributing
 
 This is currently a private project. Future contributions may be accepted when the project becomes public.

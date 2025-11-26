@@ -1,0 +1,30 @@
+# Git files
+.git
+.gitignore
+
+# Build artifacts
+*.o
+setd
+mark
+
+# Test artifacts
+/tmp/test_tree
+tests/*.log
+
+# Documentation
+*.md
+!README.md
+
+# Man pages
+*.1
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+

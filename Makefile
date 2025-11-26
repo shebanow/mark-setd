@@ -13,13 +13,20 @@ BINDIR= $(DESTDIR)/bin/$$ARCH
 MANDIR = $(DESTDIR)/man/man1
 #MACHINE_TYPE = $$ARCH
 
-TARGET1 = setd
-TARGET2 = mark
+TARGET1 = setd$(EXT)
+TARGET2 = mark$(EXT)
 
 CXX	= g++
 OFLAGS	= -O2 -std=c++14
 CFLAGS	= $(OFLAGS) 
 LDFLAGS =
+# Windows support
+ifeq ($(OS),Windows_NT)
+    CXX = g++
+    EXT = .exe
+else
+    EXT =
+endif
 MAN1 = setd.1
 MAN2 = mark.1
 SOURCES1 = setd.cpp
@@ -75,3 +82,49 @@ tar:
 	cp SETD_CSHRC mark-setd.src
 	tar -cf - mark-setd.src | compress > mark-setd.tar.Z
 	rm -fr mark-setd.src
+
+# Test targets
+.PHONY: test test-all test-bash test-zsh test-csh test-tcsh test-sh test-dash test-ksh test-fish
+.PHONY: test-build test-clean
+
+# Run all tests
+test: test-all
+
+test-all:
+	@echo "Running all tests..."
+	@cd tests && ./run_tests.sh
+
+# Test specific shell
+test-bash:
+	@cd tests && ./run_tests.sh -s bash
+
+test-zsh:
+	@cd tests && ./run_tests.sh -s zsh
+
+test-csh:
+	@cd tests && ./run_tests.sh -s csh
+
+test-tcsh:
+	@cd tests && ./run_tests.sh -s tcsh
+
+test-sh:
+	@cd tests && ./run_tests.sh -s sh
+
+test-dash:
+	@cd tests && ./run_tests.sh -s dash
+
+test-ksh:
+	@cd tests && ./run_tests.sh -s ksh
+
+test-fish:
+	@cd tests && ./run_tests.sh -s fish
+
+# Build only
+test-build:
+	@cd tests && ./run_tests.sh --build-only
+
+# Clean test artifacts
+test-clean:
+	@echo "Cleaning test artifacts..."
+	@rm -rf /tmp/test_tree 2>/dev/null || true
+	@rm -rf $$HOME/bin/setd $$HOME/bin/mark 2>/dev/null || true
