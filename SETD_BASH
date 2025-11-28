@@ -84,9 +84,20 @@ mark() {
   # Properly handle arguments with spaces (escaped or quoted)
   command mark "$@"
   
-  # Source the mark database if it exists
+  # Load marks from database (convert csh setenv syntax to bash export)
   if [ -f "$MARK_DIR/mark_db" ]; then
-    source "$MARK_DIR/mark_db"
+    while IFS= read -r line || [ -n "$line" ]; do
+      # Skip empty lines and unsetenv lines
+      [[ -z "$line" || "$line" =~ ^unsetenv ]] && continue
+      # Parse setenv mark_xxx /path format
+      if [[ "$line" =~ ^setenv[[:space:]]+mark_([^[:space:]]+)[[:space:]]+(.+)$ ]]; then
+        mark_name="${BASH_REMATCH[1]}"
+        mark_path="${BASH_REMATCH[2]}"
+        # Unescape the path (handle \ and \ )
+        mark_path=$(echo "$mark_path" | sed 's/\\ / /g' | sed 's/\\\\/\\/g')
+        export "mark_${mark_name}=$mark_path"
+      fi
+    done < "$MARK_DIR/mark_db"
   fi
 }
 
@@ -96,8 +107,9 @@ if command -v mark >/dev/null 2>&1; then
 fi
 
 # Source the tools configuration if it exists
+# Use || true to prevent errors from breaking the script
 if [ -f "$HOME/FromLinux/TOOLS_BASH" ]; then
-  source "$HOME/FromLinux/TOOLS_BASH"
+  source "$HOME/FromLinux/TOOLS_BASH" 2>/dev/null || true
 fi
 
 # Ignore .DS_Store files in git status output

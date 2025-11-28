@@ -6,9 +6,9 @@ set SCRIPT_DIR (dirname (status --current-filename))
 set PROJECT_ROOT (cd $SCRIPT_DIR/.. && pwd)
 
 # Set environment
-set -gx SETD_DIR /root/bin
-set -gx MARK_DIR /root/bin
-set -gx PATH "/root/bin:$PATH"
+set -gx SETD_DIR (test -n "$SETD_DIR" && echo "$SETD_DIR" || echo "$HOME/bin")
+set -gx MARK_DIR (test -n "$MARK_DIR" && echo "$MARK_DIR" || echo "$HOME/bin")
+set -gx PATH "$SETD_DIR:$PATH"
 
 # Fish doesn't support sourcing bash scripts directly, so we need to define functions
 function cd

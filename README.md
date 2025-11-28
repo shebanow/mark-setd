@@ -178,6 +178,47 @@ This software is licensed under a proprietary license. All rights reserved.
 
 This software may not be copied, modified, or distributed without explicit permission from the copyright holders.
 
+## Historical Context
+
+The `mark` and `setd` utilities were originally created by Sunil William Savkar in 1991, providing directory marking and navigation capabilities that were ahead of their time. These tools introduced two key concepts that have since become standard in modern shell environments:
+
+### The Original Vision (1991-1993)
+
+The original `mark` and `setd` tools provided:
+- **Named directory bookmarks**: Mark frequently used directories with short aliases (`mark myalias`)
+- **Directory stack navigation**: Navigate through a history of visited directories (`cd -l`, `cd -N`)
+- **Persistent directory history**: Maintain a queue of recently visited locations
+
+This functionality was revolutionary at a time when most shells lacked these features, making directory navigation significantly more efficient for power users.
+
+### Modern Shell Adoption
+
+Over the decades since their creation, many of these features have been adopted into mainstream shells:
+
+- **Zsh** (best native match): Implements both named directories (`hash -d`) and directory stacks (`cd -N`, `dirs -v`) natively, closely matching the original mark/setd workflow
+- **Bash**: Has directory stacks (`pushd/popd/dirs`) but requires third-party tools like `bashmarks` or `zoxide` for named bookmarks
+- **Fish**: Provides directory history and named directory variables, though with a different style
+- **tcsh/csh**: Has had directory aliases since the 1980s, making it historically closest to the original tools
+
+### Why Modernize mark-setd?
+
+Despite modern shells incorporating similar features, the original mark/setd tools offer several advantages:
+
+1. **Cross-shell compatibility**: Works consistently across bash, zsh, csh, tcsh, and other shells
+2. **Unified interface**: Single set of commands regardless of your shell
+3. **Cloud synchronization**: Version 2.0 adds cloud-based universal marks, allowing marks to sync across machines
+4. **Legacy support**: Maintains the familiar workflow for users who have relied on these tools for over 30 years
+5. **Lightweight**: Simple, focused tools without shell-specific dependencies
+
+### The Evolution to Version 2.0
+
+This modern C++ implementation (Version 2.0) preserves the original functionality while adding:
+- Cloud-based mark synchronization (OneDrive, Google Drive, Dropbox, iCloud)
+- Improved performance through modern C++ implementation
+- Better handling of spaces and special characters in directory names
+- Enhanced database management for marks and directory queues
+- Comprehensive test suite across multiple operating systems and shells
+
 ## Credits
 
 **Original Author**: Sunil William Savkar (sunil@hal.com)  

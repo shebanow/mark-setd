@@ -6,9 +6,9 @@ set SCRIPT_DIR=`dirname $0`
 set PROJECT_ROOT=`cd $SCRIPT_DIR/.. && pwd`
 
 # Set environment
-setenv SETD_DIR /root/bin
-setenv MARK_DIR /root/bin
-setenv PATH "/root/bin:${PATH}"
+if (! $?SETD_DIR) setenv SETD_DIR $HOME/bin
+if (! $?MARK_DIR) setenv MARK_DIR $HOME/bin
+setenv PATH "$SETD_DIR:$PATH"
 
 # Source SETD_CSHRC
 if (-f "$PROJECT_ROOT/SETD_CSHRC") then

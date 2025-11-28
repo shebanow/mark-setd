@@ -8,9 +8,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Set environment
-export SETD_DIR=/root/bin
-export MARK_DIR=/root/bin
-export PATH="/root/bin:${PATH}"
+export SETD_DIR=$HOME/bin
+export MARK_DIR=$HOME/bin
+export PATH="$HOME/bin:${PATH}"
 
 # For sh, we need a simpler version of the cd function
 cd() {

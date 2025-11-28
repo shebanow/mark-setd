@@ -8,7 +8,7 @@
 #     you are running on (i.e.  HP, SUN, RS6000, etcetera)
 #
 
-DESTDIR= /home/mshebanow/
+DESTDIR= $(HOME)
 BINDIR= $(DESTDIR)/bin/$$ARCH
 MANDIR = $(DESTDIR)/man/man1
 #MACHINE_TYPE = $$ARCH

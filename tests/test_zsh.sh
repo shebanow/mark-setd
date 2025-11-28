@@ -8,9 +8,9 @@ SCRIPT_DIR="$(cd "$(dirname "${(%):-%x}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Source the SETD_BASH script (zsh is mostly compatible)
-export SETD_DIR=/root/bin
-export MARK_DIR=/root/bin
-export PATH="/root/bin:${PATH}"
+export SETD_DIR=$HOME/bin
+export MARK_DIR=$HOME/bin
+export PATH="$HOME/bin:${PATH}"
 
 # Source SETD_BASH
 if [ -f "$PROJECT_ROOT/SETD_BASH" ]; then

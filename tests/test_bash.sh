@@ -8,9 +8,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Source the SETD_BASH script
-export SETD_DIR=/root/bin
-export MARK_DIR=/root/bin
-export PATH="/root/bin:${PATH}"
+# Use actual home directory instead of hardcoded $HOME/bin
+export SETD_DIR=${SETD_DIR:-$HOME/bin}
+export MARK_DIR=${MARK_DIR:-$HOME/bin}
+export PATH="${SETD_DIR}:${PATH}"
 
 # Source SETD_BASH
 if [ -f "$PROJECT_ROOT/SETD_BASH" ]; then
