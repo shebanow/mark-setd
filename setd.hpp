@@ -31,6 +31,7 @@ private:
     void pushToQueue(const std::string& path);
     void removeFromQueue(const std::string& path);
     DirectoryQueueEntry* getQueueEntry(int index) const;
+    static const char* readMarkFromFile(const std::string& filename, const std::string& markName);
 
 public:
     SetdDatabase();

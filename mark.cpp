@@ -73,7 +73,8 @@ bool CloudStorage::syncFromCloud(const std::string& cloudPath, const std::string
 }
 
 // MarkDatabase implementation
-MarkDatabase::MarkDatabase() : cloudType(CloudStorage::NONE), maxMarkSize(0) {
+MarkDatabase::MarkDatabase() : maxMarkSize(0) {
+    remoteMarkFile = "";
 }
 
 MarkDatabase::~MarkDatabase() {
@@ -123,48 +124,16 @@ std::string MarkDatabase::unescapePath(const std::string& path) {
     return unescaped;
 }
 
-bool MarkDatabase::loadCloudConfig() {
-    std::ifstream file(cloudConfigFile);
-    if (!file.is_open()) {
-        cloudType = CloudStorage::NONE;
-        cloudBasePath = "";
-        return true; // No config file is OK
-    }
-    
-    std::string typeStr, path;
-    if (std::getline(file, typeStr) && std::getline(file, path)) {
-        cloudType = CloudStorage::parseCloudType(typeStr);
-        cloudBasePath = path;
-    } else {
-        cloudType = CloudStorage::NONE;
-        cloudBasePath = "";
-    }
-    file.close();
-    return true;
-}
-
-bool MarkDatabase::saveCloudConfig() {
-    std::ofstream file(cloudConfigFile);
-    if (!file.is_open()) return false;
-    
-    file << CloudStorage::cloudTypeToString(cloudType) << std::endl;
-    file << cloudBasePath << std::endl;
-    file.close();
-    return true;
-}
 
 bool MarkDatabase::readFromFile(const std::string& filename) {
     std::ifstream file(filename);
     if (!file.is_open()) {
-        // Create empty file if it doesn't exist
-        std::ofstream createFile(filename);
-        if (!createFile.is_open()) {
-            std::cerr << "readFromFile: Unable to create " << filename << std::endl;
-            return false;
-        }
-        createFile.close();
+        // File doesn't exist - that's OK, just return true
         return true;
     }
+    
+    // Determine if this is a remote file based on filename
+    bool isRemoteFile = (filename == remoteMarkFile);
     
     std::string line;
     while (std::getline(file, line)) {
@@ -191,14 +160,23 @@ bool MarkDatabase::readFromFile(const std::string& filename) {
         // Handle escaped paths
         path = unescapePath(path);
         
-        // Check if this is a cloud mark (we'll store this info separately)
-        bool isCloud = false; // Will be determined by checking cloud database
+        // Check if mark already exists (local takes precedence)
+        bool exists = false;
+        for (auto& entry : marks) {
+            if (entry->mark == mark) {
+                // Local mark exists, skip this remote mark
+                exists = true;
+                break;
+            }
+        }
         
-        auto entry = std::make_unique<MarkEntry>(mark, path, isCloud);
-        marks.push_back(std::move(entry));
-        
-        if (mark.length() > static_cast<size_t>(maxMarkSize)) {
-            maxMarkSize = mark.length();
+        if (!exists) {
+            auto entry = std::make_unique<MarkEntry>(mark, path, isRemoteFile);
+            marks.push_back(std::move(entry));
+            
+            if (mark.length() > static_cast<size_t>(maxMarkSize)) {
+                maxMarkSize = mark.length();
+            }
         }
     }
     
@@ -249,19 +227,16 @@ bool MarkDatabase::initialize(const std::string& markDir) {
     }
     
     markFile = std::string(markDirEnv) + "/.mark_db";
-    cloudConfigFile = std::string(markDirEnv) + "/.mark_cloud_config";
     
-    if (!loadCloudConfig()) {
-        std::cerr << "initialize: Unable to load cloud config" << std::endl;
-        return false;
+    // Check for remote mark directory (optional)
+    const char* remoteDirEnv = std::getenv("MARK_REMOTE_DIR");
+    if (remoteDirEnv) {
+        remoteMarkFile = std::string(remoteDirEnv) + "/.mark_db";
+        // Load remote marks if remote directory is configured
+        readFromFile(remoteMarkFile);
     }
     
-    // Sync from cloud if configured
-    if (cloudType != CloudStorage::NONE && !cloudBasePath.empty()) {
-        std::string cloudPath = CloudStorage::getCloudPath(cloudType, cloudBasePath) + ".mark_db";
-        CloudStorage::syncFromCloud(cloudPath, markFile, cloudType);
-    }
-    
+    // Load local marks (takes precedence)
     if (!readFromFile(markFile)) {
         std::cerr << "initialize: Unable to read mark file " << markFile << std::endl;
         return false;
@@ -358,7 +333,7 @@ bool MarkDatabase::listMarks() {
         int spaces = maxMarkSize - entry->mark.length() + 3;
         for (int i = 0; i < spaces; i++) std::cout << "_";
         std::cout << " " << entry->path;
-        if (entry->isCloud) std::cout << " [CLOUD]";
+        if (entry->isCloud) std::cout << " [REMOTE]";
         std::cout << std::endl;
     }
     
@@ -368,24 +343,63 @@ bool MarkDatabase::listMarks() {
 bool MarkDatabase::updateFile() {
     sortMarks();
     
-    if (!writeToFile(markFile)) {
+    // Separate local and remote marks
+    std::vector<MarkEntry*> localMarks;
+    std::vector<MarkEntry*> remoteMarks;
+    
+    for (const auto& entry : marks) {
+        if (!entry->unsetFlag) {
+            if (entry->isCloud) {
+                remoteMarks.push_back(entry.get());
+            } else {
+                localMarks.push_back(entry.get());
+            }
+        }
+    }
+    
+    // Write local marks
+    std::string updateFile = markFile + "_update";
+    std::ofstream file(updateFile);
+    if (!file.is_open()) {
+        std::cerr << "updateFile: Unable to update " << markFile << std::endl;
         return false;
     }
     
-    // Sync to cloud if this is a cloud mark or if cloud is configured
-    if (cloudType != CloudStorage::NONE && !cloudBasePath.empty()) {
-        std::string cloudPath = CloudStorage::getCloudPath(cloudType, cloudBasePath) + ".mark_db";
-        CloudStorage::syncToCloud(markFile, cloudPath, cloudType);
+    for (const auto* entry : localMarks) {
+        std::string escapedPath = escapePath(entry->path);
+        file << "setenv mark_" << entry->mark << " " << escapedPath << std::endl;
+    }
+    
+    file.close();
+    
+    // Atomic rename for local
+    if (rename(updateFile.c_str(), markFile.c_str()) != 0) {
+        std::cerr << "updateFile: Unable to rename update file" << std::endl;
+        return false;
+    }
+    
+    // Write remote marks if MARK_REMOTE_DIR is set
+    if (!remoteMarkFile.empty() && !remoteMarks.empty()) {
+        std::string remoteUpdateFile = remoteMarkFile + "_update";
+        std::ofstream remoteFile(remoteUpdateFile);
+        if (remoteFile.is_open()) {
+            for (const auto* entry : remoteMarks) {
+                std::string escapedPath = escapePath(entry->path);
+                remoteFile << "setenv mark_" << entry->mark << " " << escapedPath << std::endl;
+            }
+            remoteFile.close();
+            
+            // Atomic rename for remote
+            if (rename(remoteUpdateFile.c_str(), remoteMarkFile.c_str()) != 0) {
+                std::cerr << "updateFile: Unable to rename remote update file" << std::endl;
+                // Don't fail if remote write fails
+            }
+        }
     }
     
     return true;
 }
 
-bool MarkDatabase::setupCloud(CloudStorage::CloudType type, const std::string& basePath) {
-    cloudType = type;
-    cloudBasePath = basePath;
-    return saveCloudConfig();
-}
 
 std::string MarkDatabase::getMarkPath(const std::string& mark) const {
     for (const auto& entry : marks) {
@@ -450,8 +464,7 @@ int main(int argc, char* argv[]) {
                       << "-h<elp>\t\t\tThis help message\n"
                       << "-reset\t\t\tClears all marks in the current environment\n"
                       << "-r<efresh>\t\tRefreshes all marks in the current environment\n"
-                      << "-cloud-setup [type] [path]\tSetup cloud storage (onedrive, googledrive, dropbox, icloud)\n"
-                      << "-cl [mark]\t\tMake mark cloud-based (universal)\n"
+                      << "-c [mark]\t\tMake mark cloud-based (stored in $MARK_REMOTE_DIR)\n"
                       << "\nexamples:\tmark xxx, mark -list, mark -reset, mark -rm xxx, mark -cl xxx" << std::endl;
             return 0;
         } else if (arg == "-v" || arg == "-ver" || arg == "-version") {
@@ -471,28 +484,19 @@ int main(int argc, char* argv[]) {
             db.updateFile();
         } else if (arg == "-r" || arg == "-refresh" || arg == "-ref") {
             db.refreshMarks();
-        } else if (arg == "-cloud-setup") {
-            if (i + 2 < argc) {
-                CloudStorage::CloudType type = CloudStorage::parseCloudType(argv[++i]);
-                std::string path = argv[++i];
-                if (db.setupCloud(type, path)) {
-                    std::cout << "Cloud storage configured: " 
-                              << CloudStorage::cloudTypeToString(type) 
-                              << " at " << path << std::endl;
-                } else {
-                    std::cerr << "mark: error setting up cloud storage" << std::endl;
-                }
-            } else {
-                std::cerr << "mark: -cloud-setup requires type and path" << std::endl;
-            }
-        } else if (arg == "-cl") {
-            // Cloud mark option
+        } else if (arg == "-c") {
+            // Cloud mark option (stored in MARK_REMOTE_DIR)
             if (i + 1 < argc) {
                 std::string markName = argv[++i];
+                const char* remoteDir = std::getenv("MARK_REMOTE_DIR");
+                if (!remoteDir) {
+                    std::cerr << "mark: -c requires $MARK_REMOTE_DIR to be set" << std::endl;
+                    return 1;
+                }
                 db.addMark(markName, currentDir, true);
                 db.updateFile();
             } else {
-                std::cerr << "mark: -cl requires a mark name" << std::endl;
+                std::cerr << "mark: -c requires a mark name" << std::endl;
             }
         } else if (arg[0] != '-') {
             // Regular mark (local by default)

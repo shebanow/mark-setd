@@ -235,6 +235,48 @@ bool SetdDatabase::addPwd(const std::string& pwd) {
     return writeToFile();
 }
 
+// Static helper to read a mark from a database file
+const char* SetdDatabase::readMarkFromFile(const std::string& filename, const std::string& markName) {
+    static std::string cachedMarkPath;
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        return nullptr;
+    }
+    
+    std::string line;
+    std::string targetMark = "mark_" + markName;
+    
+    while (std::getline(file, line)) {
+        if (line.empty() || line.find("unsetenv") == 0) continue;
+        
+        // Parse "setenv mark_xxx /path" format
+        size_t setenvPos = line.find("setenv ");
+        if (setenvPos == std::string::npos) continue;
+        
+        size_t markStart = setenvPos + 7; // After "setenv "
+        size_t spacePos = line.find(' ', markStart);
+        if (spacePos == std::string::npos) continue;
+        
+        std::string markVar = line.substr(markStart, spacePos - markStart);
+        if (markVar == targetMark) {
+            // Found the mark, extract the path
+            size_t pathStart = spacePos + 1;
+            std::string path = line.substr(pathStart);
+            // Remove trailing whitespace
+            while (!path.empty() && (path.back() == ' ' || path.back() == '\t' || path.back() == '\r')) {
+                path.pop_back();
+            }
+            // Unescape the path
+            cachedMarkPath = unescapePath(path);
+            file.close();
+            return cachedMarkPath.c_str();
+        }
+    }
+    
+    file.close();
+    return nullptr;
+}
+
 bool SetdDatabase::setMaxQueue(int max) {
     if (max <= 0) return false;
     maxQueue = max;
@@ -265,9 +307,26 @@ std::string SetdDatabase::returnDest(const std::string& path) const {
         return unescapedPath;
     }
     
-    // Check if it's a mark
+    // Check if it's a mark (from environment variable - set by shell scripts)
     std::string markEnv = "mark_" + unescapedPath;
     const char* mark = std::getenv(markEnv.c_str());
+    
+    // If not found in environment, try reading directly from mark database files
+    // (local takes precedence over remote)
+    if (!mark) {
+        const char* markDir = std::getenv("MARK_DIR");
+        if (markDir) {
+            std::string localDb = std::string(markDir) + "/.mark_db";
+            mark = readMarkFromFile(localDb, unescapedPath);
+        }
+        if (!mark) {
+            const char* remoteDir = std::getenv("MARK_REMOTE_DIR");
+            if (remoteDir) {
+                std::string remoteDb = std::string(remoteDir) + "/.mark_db";
+                mark = readMarkFromFile(remoteDb, unescapedPath);
+            }
+        }
+    }
     
     // Check if it's an environment variable
     const char* env = std::getenv(unescapedPath.c_str());
@@ -285,6 +344,23 @@ std::string SetdDatabase::returnDest(const std::string& path) const {
         
         std::string markPrefix = "mark_" + prefix;
         const char* markBase = std::getenv(markPrefix.c_str());
+        
+        // If not in environment, try reading from database files
+        if (!markBase) {
+            const char* markDir = std::getenv("MARK_DIR");
+            if (markDir) {
+                std::string localDb = std::string(markDir) + "/.mark_db";
+                markBase = readMarkFromFile(localDb, prefix);
+            }
+            if (!markBase) {
+                const char* remoteDir = std::getenv("MARK_REMOTE_DIR");
+                if (remoteDir) {
+                    std::string remoteDb = std::string(remoteDir) + "/.mark_db";
+                    markBase = readMarkFromFile(remoteDb, prefix);
+                }
+            }
+        }
+        
         if (markBase) {
             std::string result = std::string(markBase) + suffix;
             if (chdir(result.c_str()) == 0) {

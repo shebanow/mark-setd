@@ -52,13 +52,9 @@ class MarkDatabase {
 private:
     std::vector<std::unique_ptr<MarkEntry>> marks;
     std::string markFile;
-    std::string cloudConfigFile;
-    CloudStorage::CloudType cloudType;
-    std::string cloudBasePath;
+    std::string remoteMarkFile;
     int maxMarkSize;
 
-    bool loadCloudConfig();
-    bool saveCloudConfig();
     bool readFromFile(const std::string& filename);
     bool writeToFile(const std::string& filename);
     void sortMarks();
@@ -75,8 +71,6 @@ public:
     bool listMarks();
     bool updateFile();
     
-    // Cloud-related methods
-    bool setupCloud(CloudStorage::CloudType type, const std::string& basePath);
     std::string getMarkPath(const std::string& mark) const;
     
     // Utility methods

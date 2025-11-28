@@ -65,8 +65,8 @@ source /path/to/SETD_CSHRC
 # Mark current directory
 mark myproject
 
-# Mark with cloud sync (universal mark)
-mark -cl myproject
+# Mark with cloud sync (universal mark - requires MARK_REMOTE_DIR to be set)
+mark -c myproject
 
 # List all marks
 mark -list
@@ -78,15 +78,22 @@ mark -rm myproject
 mark -reset
 ```
 
-### Cloud Storage Setup
+### Cloud/Remote Marks Setup
+
+To use cloud-synced marks, set the `MARK_REMOTE_DIR` environment variable to point to your mounted cloud drive directory:
 
 ```bash
-# Setup cloud storage for universal marks
-mark -cloud-setup onedrive /path/to/onedrive
-mark -cloud-setup googledrive /path/to/google/drive
-mark -cloud-setup dropbox /path/to/dropbox
-mark -cloud-setup icloud /path/to/icloud
+# Example: Google Drive (mounted)
+export MARK_REMOTE_DIR=/Users/username/Google\ Drive/mark-setd
+
+# Example: OneDrive (mounted)
+export MARK_REMOTE_DIR=/Users/username/OneDrive/mark-setd
+
+# Example: Dropbox (mounted)
+export MARK_REMOTE_DIR=/Users/username/Dropbox/mark-setd
 ```
+
+**Note:** The cloud drive must be pre-mounted on your local filesystem. The `MARK_REMOTE_DIR` should point to a directory where you want the remote `.mark_db` file stored.
 
 ### Navigating Directories
 
@@ -128,8 +135,8 @@ cd -max 20
 cd ~/projects/my-awesome-project
 mark proj
 
-# Mark with cloud sync (accessible from other machines)
-mark -cl proj
+# Mark with cloud sync (accessible from other machines - requires MARK_REMOTE_DIR)
+mark -c proj
 
 # Navigate using the mark
 cd proj
@@ -147,9 +154,10 @@ mark -list
 ## Files
 
 - `$MARK_DIR/.mark_db` - Local mark database (location configurable via `$MARK_DIR` environment variable)
-- `$MARK_DIR/.mark_cloud_config` - Cloud storage configuration
+- `$MARK_REMOTE_DIR/.mark_db` - Remote/cloud mark database (optional, location configurable via `$MARK_REMOTE_DIR` environment variable)
 - `$SETD_DIR/setd_db` - Directory queue database
-- `$CLOUD_PATH/mark-setd/.mark_db` - Cloud-synced mark database (if configured)
+
+**Note:** When searching for marks, `setd` checks both `$MARK_DIR/.mark_db` (local) and `$MARK_REMOTE_DIR/.mark_db` (remote). Local marks take precedence over remote marks with the same name.
 
 ## Space Handling
 
@@ -159,7 +167,7 @@ The utilities now properly handle spaces in directory names when escaped with ba
 # These work correctly:
 cd "My Project"
 cd My\ Project
-mark -cl "My Project"
+mark -c "My Project"
 ```
 
 ## Architecture
