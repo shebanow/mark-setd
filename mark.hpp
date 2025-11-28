@@ -72,6 +72,7 @@ public:
     bool updateFile();
     
     std::string getMarkPath(const std::string& mark) const;
+    const std::vector<std::unique_ptr<MarkEntry>>& getMarks() const { return marks; }
     
     // Utility methods
     static bool isValidMarkName(const std::string& mark);

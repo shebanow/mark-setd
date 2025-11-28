@@ -493,8 +493,47 @@ int main(int argc, char* argv[]) {
                     std::cerr << "mark: -c requires $MARK_REMOTE_DIR to be set" << std::endl;
                     return 1;
                 }
-                db.addMark(markName, currentDir, true);
-                db.updateFile();
+                
+                // Check if mark already exists locally
+                std::string existingPath = db.getMarkPath(markName);
+                if (!existingPath.empty()) {
+                    // Check if it's a local mark (not remote) by checking the database
+                    // We need to check if the mark exists and is local
+                    bool isLocalMark = false;
+                    const auto& marks = db.getMarks();
+                    for (const auto& entry : marks) {
+                        if (entry->mark == markName && !entry->isCloud && !entry->unsetFlag) {
+                            isLocalMark = true;
+                            break;
+                        }
+                    }
+                    
+                    if (isLocalMark) {
+                        std::cout << "mark: Local mark \"" << markName << "\" already exists at: " << existingPath << std::endl;
+                        std::cout << "mark: Delete local mark and create remote mark? (y/n): ";
+                        std::string response;
+                        std::getline(std::cin, response);
+                        if (response == "y" || response == "Y" || response == "yes" || response == "Yes") {
+                            // Remove local mark first
+                            db.removeMark(markName);
+                            db.updateFile();
+                            // Now add as remote mark
+                            db.addMark(markName, currentDir, true);
+                            db.updateFile();
+                        } else {
+                            std::cerr << "mark: Operation cancelled" << std::endl;
+                            return 0;
+                        }
+                    } else {
+                        // It's already a remote mark, just update it
+                        db.addMark(markName, currentDir, true);
+                        db.updateFile();
+                    }
+                } else {
+                    // Mark doesn't exist, create as remote
+                    db.addMark(markName, currentDir, true);
+                    db.updateFile();
+                }
             } else {
                 std::cerr << "mark: -c requires a mark name" << std::endl;
             }
