@@ -21,8 +21,8 @@ cd() {
 
 mark() {
     command mark "$@"
-    if [ -f "$MARK_DIR/mark_db" ]; then
-        . "$MARK_DIR/mark_db"
+    if [ -f "$MARK_DIR/.mark_db" ]; then
+        . "$MARK_DIR/.mark_db"
     fi
 }
 

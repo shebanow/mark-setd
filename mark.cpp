@@ -248,8 +248,8 @@ bool MarkDatabase::initialize(const std::string& markDir) {
         return false;
     }
     
-    markFile = std::string(markDirEnv) + "/mark_db";
-    cloudConfigFile = std::string(markDirEnv) + "/mark_cloud_config";
+    markFile = std::string(markDirEnv) + "/.mark_db";
+    cloudConfigFile = std::string(markDirEnv) + "/.mark_cloud_config";
     
     if (!loadCloudConfig()) {
         std::cerr << "initialize: Unable to load cloud config" << std::endl;
@@ -258,7 +258,7 @@ bool MarkDatabase::initialize(const std::string& markDir) {
     
     // Sync from cloud if configured
     if (cloudType != CloudStorage::NONE && !cloudBasePath.empty()) {
-        std::string cloudPath = CloudStorage::getCloudPath(cloudType, cloudBasePath) + "mark_db";
+        std::string cloudPath = CloudStorage::getCloudPath(cloudType, cloudBasePath) + ".mark_db";
         CloudStorage::syncFromCloud(cloudPath, markFile, cloudType);
     }
     
@@ -374,7 +374,7 @@ bool MarkDatabase::updateFile() {
     
     // Sync to cloud if this is a cloud mark or if cloud is configured
     if (cloudType != CloudStorage::NONE && !cloudBasePath.empty()) {
-        std::string cloudPath = CloudStorage::getCloudPath(cloudType, cloudBasePath) + "mark_db";
+        std::string cloudPath = CloudStorage::getCloudPath(cloudType, cloudBasePath) + ".mark_db";
         CloudStorage::syncToCloud(markFile, cloudPath, cloudType);
     }
     

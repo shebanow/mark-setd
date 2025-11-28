@@ -35,7 +35,7 @@ environment.  Copying the three lines below for mark is all that
 is needed.
 .LP
        setenv MARK_DIR ~/bin
-       alias mark 'mark \\!*; source $MARK_DIR/mark_db'
+       alias mark 'mark \\!*; source $MARK_DIR/.mark_db'
        mark -refresh
 .LP
 In the specific example, $MARK_DIR points to the user's bin
@@ -104,7 +104,7 @@ invisibly  update  the  shell  with  the marks from the mark
 database.  If marks ever become corrupt,  a  simple  refresh
 should set things straight.
 .SH FILES
-$MARK_DIR/mark_db
+$MARK_DIR/.mark_db
 .SH SEE ALSO
 .B setd(1), cd(1)
 .SH AUTHOR

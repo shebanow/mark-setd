@@ -43,17 +43,19 @@ Add to your shell configuration file (`.bashrc`, `.zshrc`, or `.cshrc`):
 
 **For Bash/Zsh:**
 ```bash
-export SETD_DIR=$HOME/bin
-export MARK_DIR=$HOME/bin
+export SETD_DIR=$HOME/bin          # Directory for setd database
+export MARK_DIR=$HOME/.config/mark # Directory for mark database (can be anywhere)
 source /path/to/SETD_BASH
 ```
 
 **For Csh/Tcsh:**
 ```csh
 setenv SETD_DIR ~/bin
-setenv MARK_DIR ~/bin
+setenv MARK_DIR ~/.config/mark
 source /path/to/SETD_CSHRC
 ```
+
+**Note:** The `MARK_DIR` environment variable specifies where the `.mark_db` file will be stored. You can set it to any directory you prefer (e.g., `$HOME/.config/mark`, `$HOME/.local/share/mark`, or `$HOME/bin`). The filename is always `.mark_db`.
 
 ## Usage
 
@@ -144,10 +146,10 @@ mark -list
 
 ## Files
 
-- `$MARK_DIR/mark_db` - Local mark database
-- `$MARK_DIR/mark_cloud_config` - Cloud storage configuration
+- `$MARK_DIR/.mark_db` - Local mark database (location configurable via `$MARK_DIR` environment variable)
+- `$MARK_DIR/.mark_cloud_config` - Cloud storage configuration
 - `$SETD_DIR/setd_db` - Directory queue database
-- `$CLOUD_PATH/mark-setd/mark_db` - Cloud-synced mark database (if configured)
+- `$CLOUD_PATH/mark-setd/.mark_db` - Cloud-synced mark database (if configured)
 
 ## Space Handling
 

@@ -19,8 +19,8 @@ end
 
 function mark
     command mark $argv
-    if test -f "$MARK_DIR/mark_db"
-        source "$MARK_DIR/mark_db"
+    if test -f "$MARK_DIR/.mark_db"
+        source "$MARK_DIR/.mark_db"
     end
 end
 
