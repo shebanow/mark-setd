@@ -1,7 +1,8 @@
 #!/bin/bash
 # Test script for bash shell
 
-set -e
+# Don't use set -e - test functions need to handle failures gracefully
+# set -e
 
 TEST_ROOT="/tmp/test_tree"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,7 +34,7 @@ test_cd() {
     local expected_dir="$2"
     local test_name="$3"
     
-    cd "$target" 2>/dev/null
+    cd "$target" 2>/dev/null || return 1
     local actual_dir=$(pwd)
     
     if [ "$actual_dir" = "$expected_dir" ]; then
