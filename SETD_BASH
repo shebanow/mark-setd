@@ -1,0 +1,122 @@
+#!/bin/bash
+
+# Bash equivalent of SETD_CSHRC and DOT_cshrc_custom
+
+# Set up environment variables for setd and mark
+export SETD_DIR=$HOME/bin
+export MARK_DIR=$HOME/bin
+
+# Define the sh_path function (equivalent to the sh_path alias in csh)
+sh_path() {
+  echo "$1" | sed "s|/Users/$USER|~|"
+}
+
+# Set hostname and separator variables
+SEP=':'
+HNAME=$(hostname -s)
+
+# Equivalent of 'alias uh echo -n "]l\!*\"'
+# In Bash, we'll use a function instead of an alias with history substitution
+uh() {
+  echo -n "]l$*\\"
+}
+
+# Check if TERM is set, otherwise set it to "unknown"
+if [ -z "$TERM" ]; then
+  export TERM="unknown"
+fi
+
+# Define the tup function for terminal title updates
+tup() {
+  # Update terminal title with hostname and current directory
+  if [[ "$TERM" == "xterm" || "$TERM" == "xterm-color" || "$TERM" == "xterm-256color" || "$TERM" == "xterms" || "$TERM" == "sun" || "$TERM" == "sun-cmd" ]]; then
+    echo -ne "\033]2;$HNAME$SEP$(sh_path "$PWD")\007"
+    # Echo current working directory
+    echo "$PWD"
+  fi
+}
+
+# Function to set title directly
+title() {
+  echo -ne "\033]2;$*\007"
+}
+
+# Set up the cd function based on terminal type
+# Fixed to handle spaces in directory names when escaped with backslash
+if [[ "$TERM" == "xterm" || "$TERM" == "xterm-color" || "$TERM" == "xterm-256color" || "$TERM" == "xterms" || "$TERM" == "sun" || "$TERM" == "sun-cmd" ]]; then
+  cd() {
+    # Use setd to determine the target directory, then change to it
+    # Properly handle arguments with spaces (escaped or quoted)
+    local target_dir=$(setd "$@")
+    builtin cd "$target_dir"
+    tup  # This will echo the current directory after changing to it
+  }
+else
+  cd() {
+    # Properly handle arguments with spaces (escaped or quoted)
+    local target_dir=$(setd "$@")
+    builtin cd "$target_dir"
+    echo "$PWD"
+  }
+fi
+
+# Additional useful aliases from DOT_show-path
+cl() {
+  cd "$@"
+  ls
+}
+
+# Override pushd and popd to update terminal title
+pushd() {
+  builtin pushd "$@"
+  tup
+}
+
+popd() {
+  builtin popd "$@"
+  tup
+}
+
+# Define the mark function (equivalent to the mark alias in csh)
+# Fixed to handle spaces in directory names when escaped with backslash
+mark() {
+  # Call the mark command with all arguments
+  # Properly handle arguments with spaces (escaped or quoted)
+  command mark "$@"
+}
+
+# Refresh marks if the mark command exists
+if command -v mark >/dev/null 2>&1; then
+  mark -refresh
+fi
+
+# Source the tools configuration if it exists
+# Use || true to prevent errors from breaking the script
+if [ -f "$HOME/FromLinux/TOOLS_BASH" ]; then
+  source "$HOME/FromLinux/TOOLS_BASH" 2>/dev/null || true
+fi
+
+# Ignore .DS_Store files in git status output
+export GIT_STATUS_IGNORE=".DS_Store"
+
+# Function to display welcome message and configuration status
+show_config_status() {
+  echo "SETD_BASH environment loaded successfully!"
+  echo "-------------------------------------"
+  echo "SETD_DIR: $SETD_DIR"
+  echo "MARK_DIR: $MARK_DIR"
+  if [ -f "$HOME/FromLinux/TOOLS_BASH" ]; then
+    echo "TOOLS_BASH: Loaded"
+  else
+    echo "TOOLS_BASH: Not found"
+  fi
+  echo "Terminal type: $TERM"
+  echo "Hostname: $HNAME"
+  echo "-------------------------------------"
+}
+
+# Echo current working directory upon loading this script
+echo "Current working directory: $PWD"
+
+# Display initial terminal title and directory
+tup

@@ -1,0 +1,180 @@
+.\" @(#)setd.1 1.7 92/01/07 SMI;
+.\" Updated 92/01/07
+.TH SETD 1 "07 January 1992"
+.SH NAME
+.TP 8
+setd -
+Filter program to change directory using marks, environment variables, =
+or a built in queue.
+.SH SYNOPSIS
+.TP 7
+.B setd 
+[
+.B options
+] 
+[ 
+.B directory
+|
+.B mark
+[
+.B /directory
+] |
+.B env
+|
+.B offset
+|
+.B %directory
+]
+.TP
+.B cd
+[
+.B options
+] 
+[ 
+.B directory
+|
+.B mark
+[
+.B /directory
+] |
+.B env
+|
+.B offset
+|
+.B %directory
+]
+.SH DESCRIPTION
+.LP
+.B setd, set directory, is a filter utility interfaced
+with change directory,
+.BR cd(1)
+, to allow the user quick access
+to directory pathnames through marks, environment variables,
+offsets in a queue, etcetera.
+.LP
+Combined with the mark filter utility, 
+.BR mark(1)
+, setd provides
+a very powerful method to access frequently used directories
+through mark aliases.  setd can also translate through a mark
+with a continuation of the directory description.  Thus the
+user can set a mark in a base directory and attach to sub-
+directories under the base simply by specifying the mark + '/' + 
+sub-directory structure.
+.LP
+setd also includes a queue which tracks a history of directory
+points for the current process.  The depth of this queue is
+configurable by the user, and a simple offset is used to access
+a location in the queue.
+.LP
+The use of environment variables is also supported, along with
+traversal along the same level of a directory tree.
+.SH INSTALLATION
+.LP
+.B setd
+installation is quick and painless.  Both an environment
+variable and a cd alias must be set to store the queue database
+and set-up setd to filter into the change directory command
+respectively.  Copying the two lines below for setd is all that
+is needed.
+.LP
+       setenv SETD_DIR /usr/tmp
+       alias cd 'cd `setd \\!*`'
+.LP
+In the specific example, $SETD_DIR points to the /usr/tmp area,
+though most users will wish to actually set the pointer to their
+bin area instead (for example, ~/bin).
+.LP
+The alias of cd simply filters all input through the setd program
+and directs the output to the cd command.  To see setd in action,
+attempt to use setd separately, and notice the simple filtered 
+output produced.  When installed with the alias, all commands
+are seamless and accessible directly through cd.
+.SH OPTIONS
+.LP 
+.TP 10
+.B -l<ist>
+List queue.
+.br
+History of past directory accesses, up to the maximum
+queue depth specified by -max (or defaulting to 10).
+.TP
+.B -m<ax>
+Max queue depth.
+.br
+Sets maximum depth for the history queue (defaults to
+a maximum depth of 10 unless otherwise specified).
+.TP
+.B -v<ersion>
+Version number.
+.br
+Displays the version of setd being run.
+.TP
+.B -h<elp>
+Help message.
+.br
+Enumerates all the options.
+.SH USAGE
+.LP
+When interfaced with cd, cd will perform exactly as before
+excepting for special character sequences which are filtered
+by setd.  
+.LP.
+Below are several examples of cd with the setd filter. 
+.LP
+.TP 4
+.B (1)  cd [ directory ]
+A straight directory string is given, thus cd automatically
+changes to the given directory.
+.TP
+.B (2)  cd [ mark ]
+A mark alias was given, thus setd performs translation from
+the mark to the corresponding directory.
+.TP
+.B (3)  cd [ env ]
+An environment variable was specified, which is also translated
+from the variable into the corresponding directory.
+.TP
+.B (4)  cd [ mark/directory ]
+setd expands the given mark with the attached directory fully
+into the translated mark with the directory appended to the
+translated path.
+.TP
+.B (5)  cd [ offset ]
+Given a queue with a maximum depth of X, the offset number can
+take on values from zero through the maximum value minus one.
+The offset values are symmetric around zero, thus the following
+two lines are equivalent:
+.br
+            cd -1
+	    cd +1
+.br
+Both of these commands read the directory in position one off
+the queue and set the user to the location.  Notice position
+one corresponds to the last directory accessed.
+.TP
+.B (6)  cd [ @partial_path]
+The at sign (@) signifies setd to check the queue of past directories
+looking for a leaf node patch between the partial path string given and
+one of the entries.  If a match occurs, setd will allow a cd to the
+given entry.
+.TP
+.B (7)  cd [ %directory ]
+Finally, the percent (%) option can be placed in front of  a
+directory  name  to allow the user to specify a directory at
+the same level of hierarchy with the one currently set to.
+.SH FILES
+$SETD_DIR/setd_db
+.SH SEE ALSO
+.B mark(1), cd(1)
+.SH AUTHOR
+Sunil William Savkar
+.br
+sunil@hal.com
+.br
+HaL Computer Systems Corporation
+.br
+December 26, 1991
+.SH VERSION
+Currently version 1.7, 1/7/92
+

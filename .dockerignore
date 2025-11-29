@@ -1,0 +1,34 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+*.o
+mark
+setd
+*.exe
+
+# Test artifacts
+test_sandbox/
+*.db
+*.db_old
+*.text
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation build
+docs/
+*.pdf
+
+# Old test files (keep structure)
+tests/Dockerfile.*
+!tests/Dockerfile.test

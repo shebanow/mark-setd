@@ -1,0 +1,9 @@
+alias uh 'echo -n "]l\!*\"'
+if (! $?TERM) setenv TERM "unknown"
+# Fixed to handle spaces in directory names when escaped with backslash
+if (($TERM == "xterm") || ($TERM == "xterm-color") || ($TERM == "sun") || ($TERM == "sun-cmd")) then
+  alias cd 'cd `setd \!*`; tup'
+else
+  alias cd 'cd `setd \!*`; echo $cwd'
+endif
+# Note: csh/tcsh handles spaces in arguments automatically when properly quoted

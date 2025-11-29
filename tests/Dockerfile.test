@@ -1,0 +1,75 @@
+FROM ubuntu:22.04
+
+# Avoid interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    g++ \
+    make \
+    sqlite3 \
+    libsqlite3-dev \
+    python3 \
+    python3-pip \
+    bash \
+    zsh \
+    csh \
+    tcsh \
+    dash \
+    ksh \
+    fish \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /test
+
+# Copy source files
+COPY . /test/
+
+# Build the project
+RUN make clean && make all
+
+# Create test user
+RUN useradd -m -s /bin/bash testuser
+USER testuser
+
+# Set up test environment
+ENV HOME=/home/testuser
+ENV SETD_DIR=$HOME/bin
+ENV MARK_DIR=$HOME/.config/mark
+ENV MARK_REMOTE_DIR=$HOME/.config/mark-cloud
+ENV MARK_PATH="local=$HOME/.config/mark;cloud=$HOME/.config/mark-cloud"
+ENV PATH=$HOME/bin:$PATH
+
+# Create directories
+RUN mkdir -p $HOME/bin $HOME/.config/mark $HOME/.config/mark-cloud
+
+# Copy built binaries and setup shell integration
+USER root
+RUN mkdir -p /home/testuser/bin /home/testuser/.config/mark /home/testuser/.config/mark-cloud && \
+    cp /test/mark /test/setd /home/testuser/bin/ && \
+    cp /test/mark_migration /home/testuser/bin/ && \
+    chmod +x /home/testuser/bin/mark /home/testuser/bin/setd /home/testuser/bin/mark_migration && \
+    chown -R testuser:testuser /home/testuser/bin /home/testuser/.config && \
+    # Create .bashrc with setd integration
+    echo 'export SETD_DIR=$HOME/bin' >> /home/testuser/.bashrc && \
+    echo 'export MARK_DIR=$HOME/.config/mark' >> /home/testuser/.bashrc && \
+    echo 'export MARK_REMOTE_DIR=$HOME/.config/mark-cloud' >> /home/testuser/.bashrc && \
+    echo 'export MARK_PATH="local=$HOME/.config/mark;cloud=$HOME/.config/mark-cloud"' >> /home/testuser/.bashrc && \
+    echo 'export PATH=$HOME/bin:$PATH' >> /home/testuser/.bashrc && \
+    echo '' >> /home/testuser/.bashrc && \
+    echo '# setd integration' >> /home/testuser/.bashrc && \
+    echo 'cd() {' >> /home/testuser/.bashrc && \
+    echo '  local target_dir' >> /home/testuser/.bashrc && \
+    echo '  target_dir=$(setd "$@")' >> /home/testuser/.bashrc && \
+    echo '  if [ -n "$target_dir" ]; then' >> /home/testuser/.bashrc && \
+    echo '    builtin cd "$target_dir"' >> /home/testuser/.bashrc && \
+    echo '  fi' >> /home/testuser/.bashrc && \
+    echo '}' >> /home/testuser/.bashrc && \
+    chown testuser:testuser /home/testuser/.bashrc
+USER testuser
+
+# Default command
+CMD ["/bin/bash"]
+

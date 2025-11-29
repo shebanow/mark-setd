@@ -1,0 +1,260 @@
+#!/usr/bin/env python3
+"""
+Migration script to convert old text-based .mark_db files to SQLite format.
+
+This script:
+1. Creates a backup of the old .mark_db file as .mark_db_old
+2. Parses the old text format (setenv mark_xxx /path)
+3. Uses the new 'mark' command to create SQLite entries one at a time
+4. Supports both local and remote mark databases
+"""
+
+import os
+import sys
+import shutil
+import subprocess
+import re
+
+def unescape_path(path):
+    """Unescape path (handle backslash and escaped space)"""
+    # Replace \  with space
+    path = path.replace('\\ ', ' ')
+    # Replace \\ with \
+    path = path.replace('\\\\', '\\')
+    return path
+
+def parse_mark_file(filepath):
+    """Parse old .mark_db file and return list of (mark_name, path) tuples"""
+    marks = []
+    
+    if not os.path.exists(filepath):
+        print(f"Warning: {filepath} does not exist, skipping")
+        return marks
+    
+    try:
+        with open(filepath, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('unsetenv'):
+                    continue
+                
+                # Parse: setenv mark_xxx /path
+                match = re.match(r'^setenv\s+mark_([^\s]+)\s+(.+)$', line)
+                if match:
+                    mark_name = match.group(1)
+                    mark_path = unescape_path(match.group(2))
+                    marks.append((mark_name, mark_path))
+    except Exception as e:
+        print(f"Error reading {filepath}: {e}", file=sys.stderr)
+        return marks
+    
+    return marks
+
+def backup_file(filepath):
+    """Create backup of file as .mark_db_old"""
+    backup_path = filepath + "_old"
+    
+    if os.path.exists(backup_path):
+        print(f"Backup file {backup_path} already exists, skipping backup")
+        return False
+    
+    try:
+        shutil.copy2(filepath, backup_path)
+        print(f"Created backup: {backup_path}")
+        return True
+    except Exception as e:
+        print(f"Error creating backup: {e}", file=sys.stderr)
+        return False
+
+def migrate_database(db_dir, db_alias=None):
+    """Migrate a single database directory"""
+    db_file = os.path.join(db_dir, '.mark_db')
+    
+    if not os.path.exists(db_file):
+        print(f"Skipping {db_dir}: .mark_db file does not exist")
+        return True
+    
+    # Check if it's already SQLite (SQLite files start with "SQLite format 3")
+    try:
+        with open(db_file, 'rb') as f:
+            header = f.read(16)
+            if header.startswith(b'SQLite format 3'):
+                print(f"Skipping {db_dir}: Already a SQLite database")
+                return True
+    except Exception as e:
+        print(f"Error checking {db_file}: {e}", file=sys.stderr)
+        return False
+    
+    print(f"\nMigrating database in: {db_dir}")
+    
+    # Create backup
+    if not backup_file(db_file):
+        print(f"Warning: Could not create backup for {db_file}")
+        response = input("Continue anyway? (y/n): ")
+        if response.lower() != 'y':
+            return False
+    
+    # Parse old marks
+    marks = parse_mark_file(db_file)
+    
+    if not marks:
+        print(f"No marks found in {db_file}")
+        return True
+    
+    print(f"Found {len(marks)} marks to migrate")
+    
+    # Rename old file (we'll recreate it as SQLite)
+    old_file = db_file + ".text"
+    try:
+        os.rename(db_file, old_file)
+    except Exception as e:
+        print(f"Error renaming old file: {e}", file=sys.stderr)
+        return False
+    
+    # Migrate marks one at a time using 'mark' command
+    success_count = 0
+    fail_count = 0
+    
+    for mark_name, mark_path in marks:
+        # Build mark command
+        if db_alias:
+            cmd = ['mark', f'{db_alias}:{mark_name}']
+        else:
+            cmd = ['mark', mark_name]
+        
+        # Set MARK_DIR to the database directory for this migration
+        env = os.environ.copy()
+        env['MARK_DIR'] = db_dir
+        
+        # Change to the mark's directory to set it
+        try:
+            # Use mark command with explicit path
+            # We need to set the mark from the target directory
+            # But mark command uses current directory, so we need a different approach
+            # Actually, we can use mark -d to set from a specific directory
+            # Or we can just call mark with the path as an argument
+            
+            # Better: use mark command with the directory path
+            # But mark expects to be run from the target directory
+            # So we'll change directory first
+            
+            # Actually, looking at the mark command, it uses PWD or getcwd()
+            # So we need to change to the target directory
+            
+            # Save current directory
+            original_cwd = os.getcwd()
+            
+            try:
+                # Change to target directory (mark command uses current directory)
+                if os.path.exists(mark_path) and os.path.isdir(mark_path):
+                    os.chdir(mark_path)
+                else:
+                    print(f"  ⚠ Warning: Path does not exist: {mark_path}, skipping {mark_name}")
+                    fail_count += 1
+                    continue
+                
+                # Run mark command
+                result = subprocess.run(cmd, env=env, capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    success_count += 1
+                    print(f"  ✓ Migrated: {mark_name} -> {mark_path}")
+                else:
+                    fail_count += 1
+                    error_msg = result.stderr.strip() or result.stdout.strip()
+                    print(f"  ✗ Failed: {mark_name} - {error_msg}")
+            finally:
+                # Restore original directory
+                os.chdir(original_cwd)
+                
+        except Exception as e:
+            fail_count += 1
+            print(f"  ✗ Error migrating {mark_name}: {e}", file=sys.stderr)
+    
+    # Remove old text file if migration was successful
+    if fail_count == 0:
+        try:
+            os.remove(old_file)
+            print(f"\nMigration complete: {success_count} marks migrated successfully")
+        except Exception as e:
+            print(f"Warning: Could not remove old file {old_file}: {e}")
+    else:
+        print(f"\nMigration incomplete: {success_count} succeeded, {fail_count} failed")
+        print(f"Old file preserved as: {old_file}")
+        response = input("Restore old file? (y/n): ")
+        if response.lower() == 'y':
+            try:
+                os.rename(old_file, db_file)
+                print("Old file restored")
+            except Exception as e:
+                print(f"Error restoring old file: {e}", file=sys.stderr)
+    
+    return fail_count == 0
+
+def main():
+    """Main migration function"""
+    print("mark-setd Migration Tool")
+    print("=" * 50)
+    
+    # Get MARK_DIR
+    mark_dir = os.environ.get('MARK_DIR')
+    if not mark_dir:
+        print("Error: MARK_DIR environment variable not set", file=sys.stderr)
+        print("Please set MARK_DIR to the directory containing .mark_db", file=sys.stderr)
+        sys.exit(1)
+    
+    # Get MARK_REMOTE_DIR (optional)
+    mark_remote_dir = os.environ.get('MARK_REMOTE_DIR')
+    
+    # Get MARK_PATH (optional, for new format)
+    mark_path = os.environ.get('MARK_PATH')
+    
+    success = True
+    
+    # Migrate local database
+    if mark_dir:
+        if not migrate_database(mark_dir, None):
+            success = False
+    
+    # Migrate remote database
+    if mark_remote_dir:
+        if not migrate_database(mark_remote_dir, 'cloud'):
+            success = False
+    
+    # If MARK_PATH is set, parse it and migrate each database
+    if mark_path:
+        for item in mark_path.split(';'):
+            item = item.strip()
+            if not item:
+                continue
+            
+            # Check for alias=path format
+            if '=' in item:
+                alias, path = item.split('=', 1)
+                alias = alias.strip()
+                path = path.strip()
+            else:
+                alias = None
+                path = item.strip()
+            
+            # Expand ~
+            if path.startswith('~'):
+                path = os.path.expanduser(path)
+            
+            if not migrate_database(path, alias):
+                success = False
+    
+    if success:
+        print("\n" + "=" * 50)
+        print("Migration completed successfully!")
+        print("\nYou can now remove the backup files (.mark_db_old) if everything looks good.")
+        sys.exit(0)
+    else:
+        print("\n" + "=" * 50)
+        print("Migration completed with errors.")
+        print("Please review the output above and check backup files.")
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main()
+

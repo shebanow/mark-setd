@@ -1,0 +1,37 @@
+# Compiled binaries
+setd
+mark
+*.o
+*.a
+*.so
+*.dylib
+
+# Database files
+*_db
+*_db_update
+mark_cloud_config
+
+# Build artifacts
+*.tar
+*.tar.Z
+*.tar.gz
+mark-setd.src/
+setd.src/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.orig
+*~
+
+*.pyc

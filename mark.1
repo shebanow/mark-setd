@@ -1,0 +1,134 @@
+.\" @(#)mark.1 1.7 92/01/07 SMI;
+.\" Updated 92/01/07
+.TH MARK 1 "07 January 1992"
+.SH NAME
+.TP 8
+mark -
+Program to keep track of database of directory marks, with each mark =
+representing an aliased directory.
+.SH SYNOPSIS
+.TP 7
+.B mark
+[
+.B options
+]
+[
+.B directory mark
+]
+.SH DESCRIPTION
+.LP
+.B mark
+is a utility which is used in conjunction
+with set directory,
+.BR setd(1)
+, to allow the user quick access to directory pathnames through marks.
+.LP
+This program, combined with setd allows the user to freely
+mark directories using a string for quick access.
+.SH INSTALLATION
+.LP
+.B mark
+installation is quick and painless.  Both an environment
+variable and a mark alias must be set to store the mark database
+and set-up mark to refresh the directory marks within the
+environment.  Copying the three lines below for mark is all that
+is needed.
+.LP
+       setenv MARK_DIR ~/bin
+       alias mark 'mark \\!*'
+       mark -refresh
+.LP
+In the specific example, $MARK_DIR points to the user's bin
+area, thus allowing the user to always have a database of
+marks in a designated area for any number of processes.
+.LP
+The alias of mark simply uses mark to set up the new line in
+the mark database file, with the source command updating the
+environment variables used by setd.
+.SH OPTIONS
+.LP
+.TP 12
+.B <cr>
+.TP
+.B -l<ist>
+List directory marks.
+.br
+Listing of all the marks set and their directory translation.
+.TP
+.B -rm
+[
+.B mark
+]
+.TP
+.B -remove
+[
+.B mark
+]
+.br
+Remove mark.
+.br
+Removes the specified mark from  the mark database.
+.TP
+.B -v<ersion>
+Version number.
+.br
+Outputs the version of mark being run.
+.TP
+.B -h<elp>
+Short help message.
+.br
+A condensed help  message  of the options.
+.TP
+.B -reset
+Reset marks.
+.br
+Truncates the mark database.
+.TP
+.B -r<efresh>
+Refresh marks.
+.br
+Refreshes the shell with the marks in the database.
+.TP
+.B -c
+[
+.B mark
+]
+.br
+Make mark cloud-based (backward compatibility, maps to cloud:mark).
+.TP
+.B [db]:[mark]
+.br
+Specify which database to use. db can be an alias from MARK_PATH or a directory path.
+Databases are automatically created if they don't exist.
+.SH USAGE
+.LP
+.B mark
+can be simply used by changing directory and  then
+setting a mark name by the following
+.LP
+     mark [directory mark]
+.LP
+which can then be used to  change  directory  using
+.B setd(1)
+from  then  on!   To list marks, type mark and press return.
+Upon logging in, a  line  is  included  in  your  .cshrc  to
+invisibly  update  the  shell  with  the marks from the mark
+database.  If marks ever become corrupt,  a  simple  refresh
+should set things straight.
+.SH FILES
+$MARK_DIR/.mark_db
+.br
+SQLite database file containing mark entries. The database is automatically created when first used.
+.SH SEE ALSO
+.B setd(1), cd(1)
+.SH AUTHOR
+Sunil William Savkar
+.br
+sunil@hal.com
+.br
+HaL Computer Systems Corporation
+.br
+December 26, 1991
+.SH VERSION
+Currently version 1.7, 1/7/92
+
