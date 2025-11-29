@@ -1,4 +1,5 @@
 #include "setd.hpp"
+#include "mark_db.hpp"
 #include <iostream>
 #include <sstream>
 #include <fstream>
@@ -235,45 +236,20 @@ bool SetdDatabase::addPwd(const std::string& pwd) {
     return writeToFile();
 }
 
-// Static helper to read a mark from a database file
+// Static helper to read a mark from database files (local and remote)
 const char* SetdDatabase::readMarkFromFile(const std::string& filename, const std::string& markName) {
     static std::string cachedMarkPath;
-    std::ifstream file(filename);
-    if (!file.is_open()) {
-        return nullptr;
-    }
     
-    std::string line;
-    std::string targetMark = "mark_" + markName;
-    
-    while (std::getline(file, line)) {
-        if (line.empty() || line.find("unsetenv") == 0) continue;
-        
-        // Parse "setenv mark_xxx /path" format
-        size_t setenvPos = line.find("setenv ");
-        if (setenvPos == std::string::npos) continue;
-        
-        size_t markStart = setenvPos + 7; // After "setenv "
-        size_t spacePos = line.find(' ', markStart);
-        if (spacePos == std::string::npos) continue;
-        
-        std::string markVar = line.substr(markStart, spacePos - markStart);
-        if (markVar == targetMark) {
-            // Found the mark, extract the path
-            size_t pathStart = spacePos + 1;
-            std::string path = line.substr(pathStart);
-            // Remove trailing whitespace
-            while (!path.empty() && (path.back() == ' ' || path.back() == '\t' || path.back() == '\r')) {
-                path.pop_back();
-            }
-            // Unescape the path
-            cachedMarkPath = unescapePath(path);
-            file.close();
+    // Use MarkDatabase to read the file
+    MarkDatabase tempDb;
+    if (tempDb.readFromFile(filename)) {
+        std::string path = tempDb.getMarkPath(markName);
+        if (!path.empty()) {
+            cachedMarkPath = path;
             return cachedMarkPath.c_str();
         }
     }
     
-    file.close();
     return nullptr;
 }
 

@@ -1,11 +1,9 @@
-#ifndef MARK_HPP
-#define MARK_HPP
+#ifndef MARK_DB_HPP
+#define MARK_DB_HPP
 
 #include <string>
 #include <vector>
 #include <memory>
-#include <map>
-#include <fstream>
 
 // Forward declarations
 class MarkEntry;
@@ -34,9 +32,12 @@ private:
     std::string remoteMarkFile;
     int maxMarkSize;
 
-    bool readFromFile(const std::string& filename);
     bool writeToFile(const std::string& filename);
     void sortMarks();
+
+public:
+    // Public method to read from a specific file (used by setd)
+    bool readFromFile(const std::string& filename);
 
 public:
     MarkDatabase();
@@ -59,5 +60,5 @@ public:
     static std::string unescapePath(const std::string& path);
 };
 
-#endif // MARK_HPP
+#endif // MARK_DB_HPP
 

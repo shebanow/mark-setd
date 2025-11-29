@@ -31,24 +31,29 @@ MAN1 = setd.1
 MAN2 = mark.1
 SOURCES1 = setd.cpp
 SOURCES2 = mark.cpp
+SOURCES3 = mark_db.cpp
 OBJECTS1 = setd.o
 OBJECTS2 = mark.o
+OBJECTS3 = mark_db.o
 HEADERS1 = setd.hpp
-HEADERS2 = mark.hpp
+HEADERS2 = mark_db.hpp
 
 all: $(TARGET1) $(TARGET2)
 
-$(TARGET1): $(OBJECTS1)
-	$(CXX) $(LDFLAGS) $(OBJECTS1) -o $(TARGET1)
+$(TARGET1): $(OBJECTS1) $(OBJECTS3)
+	$(CXX) $(LDFLAGS) $(OBJECTS1) $(OBJECTS3) -o $(TARGET1)
 
-$(TARGET2): $(OBJECTS2)
-	$(CXX) $(LDFLAGS) $(OBJECTS2) -o $(TARGET2)
+$(TARGET2): $(OBJECTS2) $(OBJECTS3)
+	$(CXX) $(LDFLAGS) $(OBJECTS2) $(OBJECTS3) -o $(TARGET2)
 
 setd.o: $(HEADERS1) $(SOURCES1)
 	$(CXX) $(CFLAGS) -c $(SOURCES1) -o $(OBJECTS1)
 
 mark.o: $(HEADERS2) $(SOURCES2)
 	$(CXX) $(CFLAGS) -c $(SOURCES2) -o $(OBJECTS2)
+
+mark_db.o: $(HEADERS2) $(SOURCES3)
+	$(CXX) $(CFLAGS) -c $(SOURCES3) -o $(OBJECTS3)
 
 clean	:
 		rm -f *.o
