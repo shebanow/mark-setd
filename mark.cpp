@@ -9,68 +9,6 @@
 #include <sys/stat.h>
 #include <dirent.h>
 
-// CloudStorage implementation
-CloudStorage::CloudType CloudStorage::parseCloudType(const std::string& type) {
-    std::string lower = type;
-    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-    
-    if (lower == "onedrive") return ONEDRIVE;
-    if (lower == "googledrive" || lower == "gdrive") return GOOGLE_DRIVE;
-    if (lower == "dropbox") return DROPBOX;
-    if (lower == "icloud") return ICLOUD;
-    return NONE;
-}
-
-std::string CloudStorage::cloudTypeToString(CloudType type) {
-    switch (type) {
-        case ONEDRIVE: return "onedrive";
-        case GOOGLE_DRIVE: return "googledrive";
-        case DROPBOX: return "dropbox";
-        case ICLOUD: return "icloud";
-        default: return "none";
-    }
-}
-
-std::string CloudStorage::getCloudPath(CloudType type, const std::string& basePath) {
-    if (type == NONE || basePath.empty()) return "";
-    
-    std::string cloudPath = basePath;
-    if (cloudPath.back() != '/') cloudPath += "/";
-    cloudPath += "mark-setd/";
-    return cloudPath;
-}
-
-bool CloudStorage::syncToCloud(const std::string& localPath, const std::string& cloudPath, CloudType type) {
-    if (type == NONE || cloudPath.empty()) return false;
-    
-    // Create cloud directory if it doesn't exist
-    std::string dir = cloudPath;
-    size_t pos = dir.find_last_of('/');
-    if (pos != std::string::npos) {
-        dir = dir.substr(0, pos);
-        struct stat st;
-        if (stat(dir.c_str(), &st) != 0) {
-            // Create directory recursively
-            std::string cmd = "mkdir -p \"" + dir + "\"";
-            system(cmd.c_str());
-        }
-    }
-    
-    // Copy file to cloud location
-    std::string cmd = "cp \"" + localPath + "\" \"" + cloudPath + "\"";
-    return system(cmd.c_str()) == 0;
-}
-
-bool CloudStorage::syncFromCloud(const std::string& cloudPath, const std::string& localPath, CloudType type) {
-    if (type == NONE || cloudPath.empty()) return false;
-    
-    struct stat st;
-    if (stat(cloudPath.c_str(), &st) != 0) return false; // Cloud file doesn't exist
-    
-    // Copy file from cloud location
-    std::string cmd = "cp \"" + cloudPath + "\" \"" + localPath + "\"";
-    return system(cmd.c_str()) == 0;
-}
 
 // MarkDatabase implementation
 MarkDatabase::MarkDatabase() : maxMarkSize(0) {

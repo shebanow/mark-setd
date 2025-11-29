@@ -9,7 +9,6 @@
 
 // Forward declarations
 class MarkEntry;
-class CloudStorage;
 
 /**
  * MarkEntry class - represents a single mark entry
@@ -23,26 +22,6 @@ public:
 
     MarkEntry(const std::string& m, const std::string& p, bool cloud = false)
         : mark(m), path(p), isCloud(cloud), unsetFlag(false) {}
-};
-
-/**
- * CloudStorage class - handles cloud storage operations
- */
-class CloudStorage {
-public:
-    enum CloudType {
-        NONE,
-        ONEDRIVE,
-        GOOGLE_DRIVE,
-        DROPBOX,
-        ICLOUD
-    };
-
-    static CloudType parseCloudType(const std::string& type);
-    static std::string cloudTypeToString(CloudType type);
-    static bool syncToCloud(const std::string& localPath, const std::string& cloudPath, CloudType type);
-    static bool syncFromCloud(const std::string& cloudPath, const std::string& localPath, CloudType type);
-    static std::string getCloudPath(CloudType type, const std::string& basePath);
 };
 
 /**
