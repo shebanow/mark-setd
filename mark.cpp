@@ -7,16 +7,15 @@
 
 // Main function
 int main(int argc, char* argv[]) {
-    MarkDatabase db;
-    
-    const char* markDir = std::getenv("MARK_DIR");
-    if (!markDir) {
-        std::cerr << "mark: Must set environment var $MARK_DIR" << std::endl;
+    MarkDatabaseManager manager;
+    if (!manager.initialize()) {
+        std::cerr << "mark: Must set environment var $MARK_PATH or $MARK_DIR" << std::endl;
         return 1;
     }
     
-    if (!db.initialize(std::string(markDir))) {
-        std::cerr << "mark: error initializing database" << std::endl;
+    MarkDatabase* db = manager.getDefaultDatabase();
+    if (!db) {
+        std::cerr << "mark: No default database available" << std::endl;
         return 1;
     }
     
@@ -39,8 +38,15 @@ int main(int argc, char* argv[]) {
     
     // Parse arguments
     if (argc == 1) {
-        // List marks
-        db.listMarks();
+        // List marks from all databases
+        for (const auto& entry : manager.getDatabases()) {
+            if (!entry.alias.empty()) {
+                std::cout << "\n[" << entry.alias << "]" << std::endl;
+            } else {
+                std::cout << "\n[" << entry.path << "]" << std::endl;
+            }
+            entry.db->listMarks();
+        }
         return 0;
     }
     
@@ -52,90 +58,86 @@ int main(int argc, char* argv[]) {
                       << "option\t\t\tdescription\n\n"
                       << "<cr>\n"
                       << "-l<ist>\t\t\tLists current marks and their directories\n"
-                      << "[mark]\t\t\tAliases current directory to alphanumeric mark name\n"
+                      << "[mark] or [db]:[mark]\tAliases current directory to mark name\n"
+                      << "\t\t\t\tUse 'db:mark' to specify which database\n"
                       << "-rm [mark]\n"
                       << "-remove [mark]\t\tRemoves specified mark\n"
                       << "-v<ersion>\t\tPrints current version of the program\n"
                       << "-h<elp>\t\t\tThis help message\n"
                       << "-reset\t\t\tClears all marks in the current environment\n"
                       << "-r<efresh>\t\tRefreshes all marks in the current environment\n"
-                      << "-c [mark]\t\tMake mark cloud-based (stored in $MARK_REMOTE_DIR)\n"
-                      << "\nexamples:\tmark xxx, mark -list, mark -reset, mark -rm xxx, mark -cl xxx" << std::endl;
+                      << "-c [mark]\t\tMake mark cloud-based (backward compat, maps to cloud:mark)\n"
+                      << "\nexamples:\tmark xxx, mark cloud:xxx, mark -list, mark -reset, mark -rm xxx" << std::endl;
             return 0;
         } else if (arg == "-v" || arg == "-ver" || arg == "-version") {
             std::cout << "mark-setd version 2.0" << std::endl;
             return 0;
         } else if (arg == "-l" || arg == "-list") {
-            db.listMarks();
+            for (const auto& entry : manager.getDatabases()) {
+                if (!entry.alias.empty()) {
+                    std::cout << "\n[" << entry.alias << "]" << std::endl;
+                } else {
+                    std::cout << "\n[" << entry.path << "]" << std::endl;
+                }
+                entry.db->listMarks();
+            }
         } else if (arg == "-rm" || arg == "-remove") {
             if (i + 1 < argc) {
-                db.removeMark(argv[++i]);
-                db.updateFile();
+                db->removeMark(argv[++i]);
             } else {
                 std::cerr << "mark: -rm requires a mark name" << std::endl;
             }
         } else if (arg == "-reset") {
-            db.resetMarks();
-            db.updateFile();
+            db->resetMarks();
         } else if (arg == "-r" || arg == "-refresh" || arg == "-ref") {
-            db.refreshMarks();
+            db->refreshMarks();
         } else if (arg == "-c") {
-            // Cloud mark option (stored in MARK_REMOTE_DIR)
+            // Cloud mark option (backward compatibility - maps to cloud:mark)
             if (i + 1 < argc) {
                 std::string markName = argv[++i];
-                const char* remoteDir = std::getenv("MARK_REMOTE_DIR");
-                if (!remoteDir) {
-                    std::cerr << "mark: -c requires $MARK_REMOTE_DIR to be set" << std::endl;
+                MarkDatabase* cloudDb = manager.findDatabase("cloud");
+                if (!cloudDb) {
+                    std::cerr << "mark: -c requires cloud database (set MARK_PATH or MARK_REMOTE_DIR)" << std::endl;
                     return 1;
                 }
                 
-                // Check if mark already exists locally
-                std::string existingPath = db.getMarkPath(markName);
+                std::string existingPath = cloudDb->getMarkPath(markName);
                 if (!existingPath.empty()) {
-                    // Check if it's a local mark (not remote) by checking the database
-                    // We need to check if the mark exists and is local
-                    bool isLocalMark = false;
-                    const auto& marks = db.getMarks();
-                    for (const auto& entry : marks) {
-                        if (entry->mark == markName && !entry->isCloud && !entry->unsetFlag) {
-                            isLocalMark = true;
-                            break;
-                        }
-                    }
-                    
-                    if (isLocalMark) {
-                        std::cout << "mark: Local mark \"" << markName << "\" already exists at: " << existingPath << std::endl;
-                        std::cout << "mark: Delete local mark and create remote mark? (y/n): ";
-                        std::string response;
-                        std::getline(std::cin, response);
-                        if (response == "y" || response == "Y" || response == "yes" || response == "Yes") {
-                            // Remove local mark first
-                            db.removeMark(markName);
-                            db.updateFile();
-                            // Now add as remote mark
-                            db.addMark(markName, currentDir, true);
-                            db.updateFile();
-                        } else {
-                            std::cerr << "mark: Operation cancelled" << std::endl;
-                            return 0;
-                        }
+                    std::cout << "mark: Mark \"" << markName << "\" already exists at: " << existingPath << std::endl;
+                    std::cout << "mark: Update to current directory? (y/n): ";
+                    std::string response;
+                    std::getline(std::cin, response);
+                    if (response == "y" || response == "Y" || response == "yes" || response == "Yes") {
+                        cloudDb->addMark(markName, currentDir);
                     } else {
-                        // It's already a remote mark, just update it
-                        db.addMark(markName, currentDir, true);
-                        db.updateFile();
+                        std::cerr << "mark: Operation cancelled" << std::endl;
+                        return 0;
                     }
                 } else {
-                    // Mark doesn't exist, create as remote
-                    db.addMark(markName, currentDir, true);
-                    db.updateFile();
+                    cloudDb->addMark(markName, currentDir);
                 }
             } else {
                 std::cerr << "mark: -c requires a mark name" << std::endl;
             }
         } else if (arg[0] != '-') {
-            // Regular mark (local by default)
-            db.addMark(arg, currentDir, false);
-            db.updateFile();
+            // Check for <db>:<alias> syntax
+            size_t colonPos = arg.find(':');
+            if (colonPos != std::string::npos && colonPos > 0 && colonPos < arg.length() - 1) {
+                // New syntax: mark <db>:<alias>
+                std::string dbSpec = arg.substr(0, colonPos);
+                std::string alias = arg.substr(colonPos + 1);
+                
+                MarkDatabase* targetDb = manager.findDatabase(dbSpec);
+                if (!targetDb) {
+                    std::cerr << "mark: Failed to create or access database \"" << dbSpec << "\"" << std::endl;
+                    return 1;
+                }
+                
+                targetDb->addMark(alias, currentDir);
+            } else {
+                // Regular mark (default database)
+                db->addMark(arg, currentDir);
+            }
         } else {
             std::cerr << "mark: unrecognized option: " << arg << std::endl;
         }

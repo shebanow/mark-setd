@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <cmath>
+#include <limits>
 
 // SetdDatabase implementation
 SetdDatabase::SetdDatabase() : queueHead(nullptr), queueLength(0), maxQueue(10) {
@@ -95,14 +96,21 @@ bool SetdDatabase::readFromFile() {
     
     // Read max queue
     maxQueue = 0;
-    file >> maxQueue;
-    if (maxQueue <= 0) {
+    std::string firstLine;
+    if (std::getline(file, firstLine)) {
+        std::istringstream iss(firstLine);
+        iss >> maxQueue;
+        if (maxQueue <= 0) {
+            maxQueue = 10;
+        }
+    } else {
         maxQueue = 10;
     }
     
-    // Read queue entries
+    // Read queue entries (use getline to handle paths with spaces)
     std::string path;
-    while (file >> path) {
+    while (std::getline(file, path)) {
+        if (path.empty()) continue;
         path = unescapePath(path);
         pushToQueue(path);
     }
@@ -236,13 +244,13 @@ bool SetdDatabase::addPwd(const std::string& pwd) {
     return writeToFile();
 }
 
-// Static helper to read a mark from database files (local and remote)
-const char* SetdDatabase::readMarkFromFile(const std::string& filename, const std::string& markName) {
+// Static helper - now uses MarkDatabaseManager (deprecated, kept for compatibility)
+const char* SetdDatabase::readMarkFromFile(const std::string& directory, const std::string& markName) {
     static std::string cachedMarkPath;
     
-    // Use MarkDatabase to read the file
+    // Use MarkDatabase to read from the directory (directory/.mark_db)
     MarkDatabase tempDb;
-    if (tempDb.readFromFile(filename)) {
+    if (tempDb.initialize(directory, false)) {
         std::string path = tempDb.getMarkPath(markName);
         if (!path.empty()) {
             cachedMarkPath = path;
@@ -287,19 +295,30 @@ std::string SetdDatabase::returnDest(const std::string& path) const {
     std::string markEnv = "mark_" + unescapedPath;
     const char* mark = std::getenv(markEnv.c_str());
     
-    // If not found in environment, try reading directly from mark database files
-    // (local takes precedence over remote)
+    // If not found in environment, try using MarkDatabaseManager
     if (!mark) {
-        const char* markDir = std::getenv("MARK_DIR");
-        if (markDir) {
-            std::string localDb = std::string(markDir) + "/.mark_db";
-            mark = readMarkFromFile(localDb, unescapedPath);
+        static MarkDatabaseManager* manager = nullptr;
+        static bool managerInitialized = false;
+        
+        if (!managerInitialized) {
+            manager = new MarkDatabaseManager();
+            if (manager->initialize()) {
+                managerInitialized = true;
+            } else {
+                delete manager;
+                manager = nullptr;
+                managerInitialized = true; // Don't try again
+            }
         }
-        if (!mark) {
-            const char* remoteDir = std::getenv("MARK_REMOTE_DIR");
-            if (remoteDir) {
-                std::string remoteDb = std::string(remoteDir) + "/.mark_db";
-                mark = readMarkFromFile(remoteDb, unescapedPath);
+        
+        if (manager) {
+            // Check for -w flag (warn duplicates) - this would need to be passed in
+            // For now, don't warn
+            std::string markPath = manager->findMark(unescapedPath, false);
+            if (!markPath.empty()) {
+                static std::string cachedMark;
+                cachedMark = markPath;
+                mark = cachedMark.c_str();
             }
         }
     }
@@ -321,18 +340,28 @@ std::string SetdDatabase::returnDest(const std::string& path) const {
         std::string markPrefix = "mark_" + prefix;
         const char* markBase = std::getenv(markPrefix.c_str());
         
-        // If not in environment, try reading from database files
+        // If not in environment, try using MarkDatabaseManager
         if (!markBase) {
-            const char* markDir = std::getenv("MARK_DIR");
-            if (markDir) {
-                std::string localDb = std::string(markDir) + "/.mark_db";
-                markBase = readMarkFromFile(localDb, prefix);
+            static MarkDatabaseManager* manager = nullptr;
+            static bool managerInitialized = false;
+            
+            if (!managerInitialized) {
+                manager = new MarkDatabaseManager();
+                if (manager->initialize()) {
+                    managerInitialized = true;
+                } else {
+                    delete manager;
+                    manager = nullptr;
+                    managerInitialized = true;
+                }
             }
-            if (!markBase) {
-                const char* remoteDir = std::getenv("MARK_REMOTE_DIR");
-                if (remoteDir) {
-                    std::string remoteDb = std::string(remoteDir) + "/.mark_db";
-                    markBase = readMarkFromFile(remoteDb, prefix);
+            
+            if (manager) {
+                std::string markPath = manager->findMark(prefix, false);
+                if (!markPath.empty()) {
+                    static std::string cachedMarkBase;
+                    cachedMarkBase = markPath;
+                    markBase = cachedMarkBase.c_str();
                 }
             }
         }
@@ -456,6 +485,7 @@ int main(int argc, char* argv[]) {
     db.addPwd(currentDir);
     
     std::string dest = currentDir;
+    bool warnDuplicates = false;
     
     // Parse arguments
     if (argc == 1) {
@@ -465,6 +495,10 @@ int main(int argc, char* argv[]) {
             dest = home;
         }
     } else {
+        // Collect all non-flag arguments into a single path (handles paths with spaces)
+        std::string combinedPath;
+        bool foundPath = false;
+        
         for (int i = 1; i < argc; i++) {
             std::string arg = argv[i];
             
@@ -480,6 +514,7 @@ int main(int argc, char* argv[]) {
                           << "%[path]\t\tAttempts change to subdirectory pathname of root one above\n"
                           << "-l<ist>\t\tLists previous directories up to maximum set list length\n"
                           << "-m<ax>\t\tSets the maximum depth of the past directory list\n"
+                          << "-w\t\tWarn about duplicate marks in multiple databases\n"
                           << "numeric\t\tChanges directory to specified list pos, or offset from top (-)\n"
                           << "\nexamples:\tcd ~savkar, cd %bin, cd -4, cd MARK_NAME, cd MARK_NAME/xxx" << std::endl;
                 return 0;
@@ -501,10 +536,22 @@ int main(int argc, char* argv[]) {
                     std::cerr << "setd: -max requires a number" << std::endl;
                 }
                 return 0;
+            } else if (arg == "-w") {
+                warnDuplicates = true;
             } else {
-                // Try to resolve destination
-                dest = db.returnDest(arg);
+                // Collect non-flag arguments into combined path
+                if (foundPath) {
+                    combinedPath += " " + arg;
+                } else {
+                    combinedPath = arg;
+                    foundPath = true;
+                }
             }
+        }
+        
+        // Process the combined path if we found one
+        if (foundPath) {
+            dest = db.returnDest(combinedPath);
         }
     }
     

@@ -18,17 +18,21 @@ A modern C++ implementation of directory marking and navigation utilities, origi
 - Support for subdirectory navigation (e.g., `cd mark_name/subdir`)
 
 ### New in Version 2.0
-- **Cloud-based universal marks**: Share marks across machines via cloud storage (OneDrive, Google Drive, Dropbox, iCloud)
+- **SQLite database backend**: Fast, transactional mark storage with atomic updates
+- **Multiple database support**: Use `MARK_PATH` to define a search path of mark databases
+- **Database aliases**: Name your databases (e.g., `local=~/.config/mark;cloud=/gdrive/mark`)
+- **Auto-creation**: Databases are automatically created when first used
 - **Modern C++ implementation**: Improved performance and maintainability
 - **Better space handling**: Properly handles spaces in directory names when escaped with backslashes
-- **Enhanced database management**: More efficient mark and queue storage
 
 ## Installation
 
 ### Prerequisites
-- C++ compiler with C++11 support (g++ or clang++)
+- C++ compiler with C++14 support (g++ or clang++)
 - Make
+- SQLite3 development libraries (`libsqlite3-dev` on Debian/Ubuntu, `sqlite3` on macOS)
 - Unix-like operating system (Linux, macOS, etc.)
+- Python 3 (for migration script, if upgrading from older version)
 
 ### Build Instructions
 
@@ -55,45 +59,73 @@ setenv MARK_DIR ~/.config/mark
 source /path/to/SETD_CSHRC
 ```
 
-**Note:** The `MARK_DIR` environment variable specifies where the `.mark_db` file will be stored. You can set it to any directory you prefer (e.g., `$HOME/.config/mark`, `$HOME/.local/share/mark`, or `$HOME/bin`). The filename is always `.mark_db`.
+**Note:** The `MARK_DIR` environment variable specifies the directory where the `.mark_db` SQLite database file will be stored. You can set it to any directory you prefer (e.g., `$HOME/.config/mark`, `$HOME/.local/share/mark`, or `$HOME/bin`). The filename is always `.mark_db` (SQLite format).
 
 ## Usage
 
 ### Marking Directories
 
 ```bash
-# Mark current directory
+# Mark current directory (uses default database from MARK_DIR or first in MARK_PATH)
 mark myproject
 
-# Mark with cloud sync (universal mark - requires MARK_REMOTE_DIR to be set)
+# Mark in a specific database using alias
+mark cloud:myproject
+
+# Mark in a specific database using directory path
+mark /path/to/db:myproject
+
+# Mark with cloud sync (backward compatibility - maps to cloud:mark)
 mark -c myproject
 
-# List all marks
+# List all marks from all databases
 mark -list
 
 # Remove a mark
 mark -rm myproject
 
-# Reset all marks
+# Reset all marks in default database
 mark -reset
 ```
 
-### Cloud/Remote Marks Setup
+### Multiple Database Support
 
-To use cloud-synced marks, set the `MARK_REMOTE_DIR` environment variable to point to your mounted cloud drive directory:
+You can define multiple mark databases using the `MARK_PATH` environment variable:
 
 ```bash
-# Example: Google Drive (mounted)
-export MARK_REMOTE_DIR=/Users/username/Google\ Drive/mark-setd
+# Define a search path with aliases
+export MARK_PATH="local=~/.config/mark;cloud=/gdrive/user/mark;work=~/work/marks"
 
-# Example: OneDrive (mounted)
-export MARK_REMOTE_DIR=/Users/username/OneDrive/mark-setd
+# Now you can use:
+mark local:home      # Store in local database
+mark cloud:shared    # Store in cloud database
+mark work:project    # Store in work database
 
-# Example: Dropbox (mounted)
-export MARK_REMOTE_DIR=/Users/username/Dropbox/mark-setd
+# setd searches databases in order (first match wins)
+cd home              # Uses first database that has "home" mark
 ```
 
-**Note:** The cloud drive must be pre-mounted on your local filesystem. The `MARK_REMOTE_DIR` should point to a directory where you want the remote `.mark_db` file stored.
+If `MARK_PATH` is not set, the system falls back to `MARK_DIR` (local) and `MARK_REMOTE_DIR` (cloud) for backward compatibility.
+
+### Migration from Old Format
+
+If you're upgrading from a previous version that used text-based `.mark_db` files, use the migration script:
+
+```bash
+# Make sure MARK_DIR (and MARK_REMOTE_DIR if used) are set
+export MARK_DIR=$HOME/.config/mark
+export MARK_REMOTE_DIR=/gdrive/user/mark  # if applicable
+
+# Run migration script
+./mark_migration
+```
+
+The migration script will:
+1. Create backups of old files (`.mark_db_old`)
+2. Convert all marks to SQLite format
+3. Preserve old files until you verify the migration worked
+
+**Note:** The migration script requires Python 3 and the `mark` command to be in your PATH.
 
 ### Navigating Directories
 
@@ -153,11 +185,15 @@ mark -list
 
 ## Files
 
-- `$MARK_DIR/.mark_db` - Local mark database (location configurable via `$MARK_DIR` environment variable)
-- `$MARK_REMOTE_DIR/.mark_db` - Remote/cloud mark database (optional, location configurable via `$MARK_REMOTE_DIR` environment variable)
-- `$SETD_DIR/setd_db` - Directory queue database
+- `$MARK_DIR/.mark_db` - Local mark database (SQLite format, location configurable via `$MARK_DIR` environment variable)
+- `$MARK_REMOTE_DIR/.mark_db` - Remote/cloud mark database (SQLite format, optional, location configurable via `$MARK_REMOTE_DIR` environment variable)
+- `$SETD_DIR/setd_db` - Directory queue database (text format)
 
-**Note:** When searching for marks, `setd` checks both `$MARK_DIR/.mark_db` (local) and `$MARK_REMOTE_DIR/.mark_db` (remote). Local marks take precedence over remote marks with the same name.
+**Note:** 
+- All `.mark_db` files are SQLite databases (binary format, but can be inspected with `sqlite3` command)
+- When searching for marks, `setd` checks databases in `MARK_PATH` order (or `MARK_DIR` then `MARK_REMOTE_DIR` if `MARK_PATH` is not set)
+- First match wins - local marks take precedence over remote marks with the same name
+- Databases are automatically created when first used if they don't exist
 
 ## Space Handling
 
@@ -174,11 +210,18 @@ mark -c "My Project"
 
 ### Classes
 
-- **MarkDatabase**: Manages the mark database with support for local and cloud marks
-- **MarkEntry**: Represents a single mark entry
-- **CloudStorage**: Handles cloud storage operations
+- **MarkDatabase**: Manages a single SQLite mark database file
+- **MarkDatabaseManager**: Manages multiple mark databases with search path support
+- **MarkEntry**: Represents a single mark entry (in-memory representation)
 - **SetdDatabase**: Manages the directory queue
 - **DirectoryQueueEntry**: Represents a directory in the queue
+
+### Database Format
+
+Marks are stored in SQLite databases with the following schema:
+- `marks` table: `id`, `name` (unique), `path`, `created_at`, `updated_at`
+- Index on `name` for fast lookups
+- Atomic transactions for safe concurrent access
 
 ## License
 

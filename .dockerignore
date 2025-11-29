@@ -1,30 +1,34 @@
-# Git files
+# Git
 .git
 .gitignore
 
 # Build artifacts
 *.o
-setd
 mark
+setd
+*.exe
 
 # Test artifacts
-/tmp/test_tree
-tests/*.log
+test_sandbox/
+*.db
+*.db_old
+*.text
 
-# Documentation
-*.md
-!README.md
-
-# Man pages
-*.1
-
-# IDE files
+# IDE
 .vscode
 .idea
 *.swp
 *.swo
+*~
 
-# OS files
+# OS
 .DS_Store
 Thumbs.db
 
+# Documentation build
+docs/
+*.pdf
+
+# Old test files (keep structure)
+tests/Dockerfile.*
+!tests/Dockerfile.test

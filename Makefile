@@ -19,7 +19,7 @@ TARGET2 = mark$(EXT)
 CXX	= g++
 OFLAGS	= -O2 -std=c++14
 CFLAGS	= $(OFLAGS) 
-LDFLAGS =
+LDFLAGS = -lsqlite3
 # Windows support
 ifeq ($(OS),Windows_NT)
     CXX = g++
@@ -41,10 +41,10 @@ HEADERS2 = mark_db.hpp
 all: $(TARGET1) $(TARGET2)
 
 $(TARGET1): $(OBJECTS1) $(OBJECTS3)
-	$(CXX) $(LDFLAGS) $(OBJECTS1) $(OBJECTS3) -o $(TARGET1)
+	$(CXX) $(OBJECTS1) $(OBJECTS3) $(LDFLAGS) -o $(TARGET1)
 
 $(TARGET2): $(OBJECTS2) $(OBJECTS3)
-	$(CXX) $(LDFLAGS) $(OBJECTS2) $(OBJECTS3) -o $(TARGET2)
+	$(CXX) $(OBJECTS2) $(OBJECTS3) $(LDFLAGS) -o $(TARGET2)
 
 setd.o: $(HEADERS1) $(SOURCES1)
 	$(CXX) $(CFLAGS) -c $(SOURCES1) -o $(OBJECTS1)

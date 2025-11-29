@@ -6,13 +6,19 @@
 #include <cstdlib>
 #include <cstring>
 #include <cctype>
+#include <sys/stat.h>
+#include <sqlite3.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 // MarkDatabase implementation
-MarkDatabase::MarkDatabase() : maxMarkSize(0) {
-    remoteMarkFile = "";
+MarkDatabase::MarkDatabase() : db(nullptr), maxMarkSize(0) {
 }
 
 MarkDatabase::~MarkDatabase() {
+    if (db) {
+        sqlite3_close(db);
+    }
 }
 
 bool MarkDatabase::isValidMarkName(const std::string& mark) {
@@ -45,10 +51,10 @@ std::string MarkDatabase::unescapePath(const std::string& path) {
         if (path[i] == '\\' && i + 1 < path.length()) {
             if (path[i + 1] == ' ') {
                 unescaped += ' ';
-                ++i;
+                i++;
             } else if (path[i + 1] == '\\') {
                 unescaped += '\\';
-                ++i;
+                i++;
             } else {
                 unescaped += path[i];
             }
@@ -59,158 +65,145 @@ std::string MarkDatabase::unescapePath(const std::string& path) {
     return unescaped;
 }
 
-bool MarkDatabase::readFromFile(const std::string& filename) {
-    std::ifstream file(filename);
-    if (!file.is_open()) {
-        // File doesn't exist - that's OK, just return true
-        return true;
-    }
+bool MarkDatabase::createSchema() {
+    const char* sql = 
+        "CREATE TABLE IF NOT EXISTS marks ("
+        "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "  name TEXT UNIQUE NOT NULL,"
+        "  path TEXT NOT NULL,"
+        "  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+        "  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+        ");"
+        "CREATE INDEX IF NOT EXISTS idx_marks_name ON marks(name);";
     
-    // Determine if this is a remote file based on filename
-    // If remoteMarkFile is empty, check if filename contains MARK_REMOTE_DIR
-    bool isRemoteFile = false;
-    if (!remoteMarkFile.empty()) {
-        isRemoteFile = (filename == remoteMarkFile);
-    } else {
-        // Check if filename is in MARK_REMOTE_DIR
-        const char* remoteDirEnv = std::getenv("MARK_REMOTE_DIR");
-        if (remoteDirEnv) {
-            std::string remoteDb = std::string(remoteDirEnv) + "/.mark_db";
-            isRemoteFile = (filename == remoteDb);
-        }
+    char* errMsg = nullptr;
+    int rc = sqlite3_exec(db, sql, nullptr, nullptr, &errMsg);
+    if (rc != SQLITE_OK) {
+        std::cerr << "createSchema: SQL error: " << (errMsg ? errMsg : "unknown") << std::endl;
+        sqlite3_free(errMsg);
+        return false;
     }
-    
-    std::string line;
-    while (std::getline(file, line)) {
-        if (line.empty()) continue;
-        
-        std::istringstream iss(line);
-        std::string setenv, markPrefix, mark, path;
-        
-        iss >> setenv >> markPrefix >> path;
-        
-        if (setenv == "unsetenv") continue;
-        if (setenv != "setenv") {
-            std::cerr << "readFromFile: Error in mark database format" << std::endl;
-            continue;
-        }
-        
-        // Extract mark name from "mark_<name>"
-        if (markPrefix.substr(0, 5) == "mark_") {
-            mark = markPrefix.substr(5);
-        } else {
-            continue;
-        }
-        
-        // Handle escaped paths
-        path = unescapePath(path);
-        
-        // Check if mark already exists (local takes precedence)
-        bool exists = false;
-        for (auto& entry : marks) {
-            if (entry->mark == mark) {
-                // Local mark exists, skip this remote mark
-                exists = true;
-                break;
-            }
-        }
-        
-        if (!exists) {
-            auto entry = std::make_unique<MarkEntry>(mark, path, isRemoteFile);
-            marks.push_back(std::move(entry));
-            
-            if (mark.length() > static_cast<size_t>(maxMarkSize)) {
-                maxMarkSize = mark.length();
-            }
-        }
-    }
-    
-    file.close();
     return true;
 }
 
-bool MarkDatabase::writeToFile(const std::string& filename) {
-    std::string updateFile = filename + "_update";
-    std::ofstream file(updateFile);
-    if (!file.is_open()) {
-        std::cerr << "writeToFile: Unable to update " << filename << std::endl;
+bool MarkDatabase::loadMarks() {
+    const char* sql = "SELECT name, path FROM marks ORDER BY name";
+    sqlite3_stmt* stmt;
+    
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        std::cerr << "loadMarks: Failed to prepare statement" << std::endl;
         return false;
     }
     
-    for (const auto& entry : marks) {
-        if (!entry->unsetFlag) {
-            std::string escapedPath = escapePath(entry->path);
-            file << "setenv mark_" << entry->mark << " " << escapedPath << std::endl;
-        } else {
-            file << "unsetenv mark_" << entry->mark << std::endl;
+    maxMarkSize = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char* name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        const char* path = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        
+        if (name && path) {
+            std::string markName(name);
+            std::string markPath(path);
+            
+            if (markName.length() > static_cast<size_t>(maxMarkSize)) {
+                maxMarkSize = markName.length();
+            }
         }
     }
     
-    file.close();
-    
-    // Atomic rename
-    if (rename(updateFile.c_str(), filename.c_str()) != 0) {
-        std::cerr << "writeToFile: Unable to rename update file" << std::endl;
-        return false;
-    }
-    
+    sqlite3_finalize(stmt);
     return true;
 }
 
 void MarkDatabase::sortMarks() {
-    std::sort(marks.begin(), marks.end(), 
-        [](const std::unique_ptr<MarkEntry>& a, const std::unique_ptr<MarkEntry>& b) {
-            return a->mark < b->mark;
-        });
+    // Marks are sorted in SQL queries, no need to sort in memory
 }
 
-bool MarkDatabase::initialize(const std::string& markDir) {
-    const char* markDirEnv = std::getenv("MARK_DIR");
-    if (!markDirEnv) {
-        std::cerr << "initialize: Must set environment var $MARK_DIR" << std::endl;
+bool MarkDatabase::initialize(const std::string& directory, bool createIfMissing) {
+    // Ensure directory exists
+    struct stat st;
+    if (stat(directory.c_str(), &st) != 0) {
+        // Directory doesn't exist, try to create it
+        std::string cmd = "mkdir -p \"" + directory + "\"";
+        if (system(cmd.c_str()) != 0) {
+            std::cerr << "initialize: Failed to create directory: " << directory << std::endl;
+            return false;
+        }
+    } else if (!S_ISDIR(st.st_mode)) {
+        std::cerr << "initialize: Path exists but is not a directory: " << directory << std::endl;
         return false;
     }
     
-    markFile = std::string(markDirEnv) + "/.mark_db";
-    
-    // Check for remote mark directory (optional)
-    const char* remoteDirEnv = std::getenv("MARK_REMOTE_DIR");
-    if (remoteDirEnv) {
-        remoteMarkFile = std::string(remoteDirEnv) + "/.mark_db";
-        // Load remote marks if remote directory is configured
-        readFromFile(remoteMarkFile);
+    // Build full path: directory/.mark_db
+    dbPath = directory;
+    if (dbPath.back() != '/') {
+        dbPath += "/";
     }
+    dbPath += ".mark_db";
     
-    // Load local marks (takes precedence)
-    if (!readFromFile(markFile)) {
-        std::cerr << "initialize: Unable to read mark file " << markFile << std::endl;
+    // Check if file exists
+    bool exists = (access(dbPath.c_str(), F_OK) == 0);
+    
+    if (!exists && !createIfMissing) {
+        // Database doesn't exist and we're not allowed to create it
         return false;
     }
+    
+    // Open or create database
+    int rc = sqlite3_open(dbPath.c_str(), &db);
+    if (rc != SQLITE_OK) {
+        std::cerr << "initialize: Cannot open database: " << sqlite3_errmsg(db) << std::endl;
+        sqlite3_close(db);
+        db = nullptr;
+        return false;
+    }
+    
+    // Create schema if new database
+    if (!exists || createIfMissing) {
+        if (!createSchema()) {
+            sqlite3_close(db);
+            db = nullptr;
+            return false;
+        }
+    }
+    
+    // Load marks to calculate maxMarkSize
+    loadMarks();
     
     return true;
 }
 
-bool MarkDatabase::addMark(const std::string& mark, const std::string& path, bool isCloud) {
+bool MarkDatabase::addMark(const std::string& mark, const std::string& path) {
     if (!isValidMarkName(mark)) {
         std::cerr << "addMark: mark must be alphanumeric" << std::endl;
         return false;
     }
     
-    // Check if mark already exists
-    for (auto& entry : marks) {
-        if (entry->mark == mark) {
-            entry->path = path;
-            entry->isCloud = isCloud;
-            entry->unsetFlag = false;
-            std::cerr << "addMark: mark \"" << mark << "\" (" << path << ") updated" << std::endl;
-            return true;
-        }
+    if (!db) {
+        std::cerr << "addMark: Database not initialized" << std::endl;
+        return false;
     }
     
-    // Create new mark
-    auto entry = std::make_unique<MarkEntry>(mark, path, isCloud);
-    marks.push_back(std::move(entry));
+    // Use INSERT OR REPLACE to handle updates
+    const char* sql = "INSERT OR REPLACE INTO marks (name, path, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)";
+    sqlite3_stmt* stmt;
     
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        std::cerr << "addMark: Failed to prepare statement" << std::endl;
+        return false;
+    }
+    
+    sqlite3_bind_text(stmt, 1, mark.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, path.c_str(), -1, SQLITE_STATIC);
+    
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    if (rc != SQLITE_DONE) {
+        std::cerr << "addMark: Failed to execute: " << sqlite3_errmsg(db) << std::endl;
+        return false;
+    }
+    
+    // Update maxMarkSize
     if (mark.length() > static_cast<size_t>(maxMarkSize)) {
         maxMarkSize = mark.length();
     }
@@ -220,48 +213,114 @@ bool MarkDatabase::addMark(const std::string& mark, const std::string& path, boo
 }
 
 bool MarkDatabase::removeMark(const std::string& mark) {
-    for (auto& entry : marks) {
-        if (entry->mark == mark) {
-            entry->unsetFlag = true;
-            std::cerr << "removeMark: mark \"" << mark << "\" (" << entry->path << ") removed" << std::endl;
-            return true;
-        }
+    if (!db) {
+        std::cerr << "removeMark: Database not initialized" << std::endl;
+        return false;
     }
     
-    std::cerr << "removeMark: mark \"" << mark << "\" not found" << std::endl;
-    return false;
+    // First check if mark exists and get its path for the message
+    const char* selectSql = "SELECT path FROM marks WHERE name = ?";
+    sqlite3_stmt* selectStmt;
+    
+    if (sqlite3_prepare_v2(db, selectSql, -1, &selectStmt, nullptr) != SQLITE_OK) {
+        std::cerr << "removeMark: Failed to prepare select statement" << std::endl;
+        return false;
+    }
+    
+    sqlite3_bind_text(selectStmt, 1, mark.c_str(), -1, SQLITE_STATIC);
+    
+    std::string markPath;
+    bool found = false;
+    if (sqlite3_step(selectStmt) == SQLITE_ROW) {
+        const char* path = reinterpret_cast<const char*>(sqlite3_column_text(selectStmt, 0));
+        if (path) {
+            markPath = path;
+            found = true;
+        }
+    }
+    sqlite3_finalize(selectStmt);
+    
+    if (!found) {
+        std::cerr << "removeMark: mark \"" << mark << "\" not found" << std::endl;
+        return false;
+    }
+    
+    // Delete the mark
+    const char* deleteSql = "DELETE FROM marks WHERE name = ?";
+    sqlite3_stmt* deleteStmt;
+    
+    if (sqlite3_prepare_v2(db, deleteSql, -1, &deleteStmt, nullptr) != SQLITE_OK) {
+        std::cerr << "removeMark: Failed to prepare delete statement" << std::endl;
+        return false;
+    }
+    
+    sqlite3_bind_text(deleteStmt, 1, mark.c_str(), -1, SQLITE_STATIC);
+    
+    int rc = sqlite3_step(deleteStmt);
+    sqlite3_finalize(deleteStmt);
+    
+    if (rc != SQLITE_DONE) {
+        std::cerr << "removeMark: Failed to execute: " << sqlite3_errmsg(db) << std::endl;
+        return false;
+    }
+    
+    std::cerr << "removeMark: mark \"" << mark << "\" (" << markPath << ") removed" << std::endl;
+    return true;
 }
 
 bool MarkDatabase::resetMarks() {
-    for (auto& entry : marks) {
-        entry->unsetFlag = true;
+    if (!db) {
+        std::cerr << "resetMarks: Database not initialized" << std::endl;
+        return false;
     }
+    
+    const char* sql = "DELETE FROM marks";
+    char* errMsg = nullptr;
+    int rc = sqlite3_exec(db, sql, nullptr, nullptr, &errMsg);
+    
+    if (rc != SQLITE_OK) {
+        std::cerr << "resetMarks: SQL error: " << (errMsg ? errMsg : "unknown") << std::endl;
+        sqlite3_free(errMsg);
+        return false;
+    }
+    
+    maxMarkSize = 0;
     return true;
 }
 
 bool MarkDatabase::refreshMarks() {
-    // This would typically reload the marks into the shell environment
-    // For now, we'll just return true
+    // For SQLite, refresh just means reloading (no-op since we query directly)
     return true;
 }
 
 bool MarkDatabase::listMarks() {
-    if (maxMarkSize < 4) maxMarkSize = 4;
-    
-    if (marks.empty()) {
+    if (!db) {
         std::cout << std::endl;
         return true;
     }
     
-    // Filter out unset marks for display
-    std::vector<MarkEntry*> activeMarks;
-    for (const auto& entry : marks) {
-        if (!entry->unsetFlag) {
-            activeMarks.push_back(entry.get());
+    const char* sql = "SELECT name, path FROM marks ORDER BY name";
+    sqlite3_stmt* stmt;
+    
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        std::cout << std::endl;
+        return true;
+    }
+    
+    std::vector<std::pair<std::string, std::string>> markList;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char* name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        const char* path = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        
+        if (name && path) {
+            markList.push_back({std::string(name), std::string(path)});
         }
     }
     
-    if (activeMarks.empty()) {
+    sqlite3_finalize(stmt);
+    
+    if (markList.empty()) {
         std::cout << std::endl;
         return true;
     }
@@ -273,84 +332,215 @@ bool MarkDatabase::listMarks() {
     for (int i = 0; i < maxMarkSize + 1; i++) std::cout << " ";
     std::cout << "----" << std::endl;
     
-    for (const auto* entry : activeMarks) {
-        std::cout << entry->mark << " ";
-        int spaces = maxMarkSize - entry->mark.length() + 3;
+    for (const auto& entry : markList) {
+        std::cout << entry.first << " ";
+        int spaces = maxMarkSize - entry.first.length() + 3;
         for (int i = 0; i < spaces; i++) std::cout << "_";
-        std::cout << " " << entry->path;
-        if (entry->isCloud) std::cout << " [REMOTE]";
-        std::cout << std::endl;
-    }
-    
-    return true;
-}
-
-bool MarkDatabase::updateFile() {
-    sortMarks();
-    
-    // Separate local and remote marks
-    std::vector<MarkEntry*> localMarks;
-    std::vector<MarkEntry*> remoteMarks;
-    
-    for (const auto& entry : marks) {
-        if (!entry->unsetFlag) {
-            if (entry->isCloud) {
-                remoteMarks.push_back(entry.get());
-            } else {
-                localMarks.push_back(entry.get());
-            }
-        }
-    }
-    
-    // Write local marks
-    std::string updateFile = markFile + "_update";
-    std::ofstream file(updateFile);
-    if (!file.is_open()) {
-        std::cerr << "updateFile: Unable to update " << markFile << std::endl;
-        return false;
-    }
-    
-    for (const auto* entry : localMarks) {
-        std::string escapedPath = escapePath(entry->path);
-        file << "setenv mark_" << entry->mark << " " << escapedPath << std::endl;
-    }
-    
-    file.close();
-    
-    // Atomic rename for local
-    if (rename(updateFile.c_str(), markFile.c_str()) != 0) {
-        std::cerr << "updateFile: Unable to rename update file" << std::endl;
-        return false;
-    }
-    
-    // Write remote marks if MARK_REMOTE_DIR is set
-    if (!remoteMarkFile.empty() && !remoteMarks.empty()) {
-        std::string remoteUpdateFile = remoteMarkFile + "_update";
-        std::ofstream remoteFile(remoteUpdateFile);
-        if (remoteFile.is_open()) {
-            for (const auto* entry : remoteMarks) {
-                std::string escapedPath = escapePath(entry->path);
-                remoteFile << "setenv mark_" << entry->mark << " " << escapedPath << std::endl;
-            }
-            remoteFile.close();
-            
-            // Atomic rename for remote
-            if (rename(remoteUpdateFile.c_str(), remoteMarkFile.c_str()) != 0) {
-                std::cerr << "updateFile: Unable to rename remote update file" << std::endl;
-                // Don't fail if remote write fails
-            }
-        }
+        std::cout << " " << entry.second << std::endl;
     }
     
     return true;
 }
 
 std::string MarkDatabase::getMarkPath(const std::string& mark) const {
-    for (const auto& entry : marks) {
-        if (entry->mark == mark && !entry->unsetFlag) {
-            return entry->path;
+    if (!db) {
+        return "";
+    }
+    
+    const char* sql = "SELECT path FROM marks WHERE name = ?";
+    sqlite3_stmt* stmt;
+    
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return "";
+    }
+    
+    sqlite3_bind_text(stmt, 1, mark.c_str(), -1, SQLITE_STATIC);
+    
+    std::string result;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char* path = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        if (path) {
+            result = path;
         }
     }
-    return "";
+    
+    sqlite3_finalize(stmt);
+    return result;
 }
 
+// MarkDatabaseManager implementation
+MarkDatabaseManager::MarkDatabaseManager() {
+}
+
+MarkDatabaseManager::~MarkDatabaseManager() {
+}
+
+std::string MarkDatabaseManager::expandPath(const std::string& path) {
+    std::string expanded = path;
+    
+    // Expand ~ to home directory
+    if (expanded[0] == '~') {
+        const char* home = std::getenv("HOME");
+        if (home) {
+            expanded = std::string(home) + expanded.substr(1);
+        }
+    }
+    
+    return expanded;
+}
+
+void MarkDatabaseManager::parseMarkPath(const std::string& markPath) {
+    databases.clear();
+    
+    if (markPath.empty()) {
+        // Fallback to MARK_DIR for backward compatibility
+        const char* markDir = std::getenv("MARK_DIR");
+        if (markDir) {
+            DatabaseEntry entry;
+            entry.alias = "";
+            entry.path = expandPath(markDir);
+            entry.db = std::make_unique<MarkDatabase>();
+            // Auto-create default database if it doesn't exist
+            if (!entry.db->initialize(entry.path, true)) {
+                std::cerr << "Warning: Failed to initialize database in " << entry.path << std::endl;
+                return;
+            }
+            databases.push_back(std::move(entry));
+        }
+        return;
+    }
+    
+    // Parse semicolon-separated list
+    std::istringstream iss(markPath);
+    std::string item;
+    
+    while (std::getline(iss, item, ';')) {
+        // Trim whitespace
+        item.erase(0, item.find_first_not_of(" \t"));
+        item.erase(item.find_last_not_of(" \t") + 1);
+        
+        if (item.empty()) continue;
+        
+        DatabaseEntry entry;
+        
+        // Check for alias=path format
+        size_t eqPos = item.find('=');
+        if (eqPos != std::string::npos) {
+            entry.alias = item.substr(0, eqPos);
+            entry.path = expandPath(item.substr(eqPos + 1));
+        } else {
+            // Direct path (directory)
+            entry.alias = "";
+            entry.path = expandPath(item);
+        }
+        
+        entry.db = std::make_unique<MarkDatabase>();
+        // Auto-create databases from MARK_PATH if they don't exist
+        if (!entry.db->initialize(entry.path, true)) {
+            std::cerr << "Warning: Failed to initialize database in " << entry.path << std::endl;
+            continue;
+        }
+        databases.push_back(std::move(entry));
+    }
+}
+
+bool MarkDatabaseManager::initialize() {
+    const char* markPath = std::getenv("MARK_PATH");
+    
+    if (markPath) {
+        parseMarkPath(markPath);
+    } else {
+        // Fallback: use MARK_DIR and MARK_REMOTE_DIR for backward compatibility
+        const char* markDir = std::getenv("MARK_DIR");
+        if (markDir) {
+            DatabaseEntry entry;
+            entry.alias = "local";
+            entry.path = expandPath(markDir);
+            entry.db = std::make_unique<MarkDatabase>();
+            // Auto-create local database if it doesn't exist
+            if (!entry.db->initialize(entry.path, true)) {
+                std::cerr << "Warning: Failed to initialize local database in " << entry.path << std::endl;
+            } else {
+                databases.push_back(std::move(entry));
+            }
+        }
+        
+        const char* remoteDir = std::getenv("MARK_REMOTE_DIR");
+        if (remoteDir) {
+            DatabaseEntry entry;
+            entry.alias = "cloud";
+            entry.path = expandPath(remoteDir);
+            entry.db = std::make_unique<MarkDatabase>();
+            // Auto-create remote database if it doesn't exist
+            if (!entry.db->initialize(entry.path, true)) {
+                std::cerr << "Warning: Failed to initialize remote database in " << entry.path << std::endl;
+            } else {
+                databases.push_back(std::move(entry));
+            }
+        }
+    }
+    
+    return !databases.empty();
+}
+
+MarkDatabase* MarkDatabaseManager::findDatabase(const std::string& dbSpec) {
+    // Try to find by alias first
+    for (auto& entry : databases) {
+        if (entry.alias == dbSpec) {
+            return entry.db.get();
+        }
+    }
+    
+    // Try to find by path (expanded)
+    std::string expandedPath = expandPath(dbSpec);
+    for (auto& entry : databases) {
+        if (entry.path == expandedPath) {
+            return entry.db.get();
+        }
+    }
+    
+    // Not found in existing databases - create a new one
+    // dbSpec is a directory path, will create directory/.mark_db
+    DatabaseEntry entry;
+    entry.alias = "";
+    entry.path = expandPath(dbSpec);
+    entry.db = std::make_unique<MarkDatabase>();
+    if (!entry.db->initialize(entry.path, true)) {
+        std::cerr << "findDatabase: Failed to create database in " << entry.path << std::endl;
+        return nullptr;
+    }
+    databases.push_back(std::move(entry));
+    return databases.back().db.get();
+}
+
+MarkDatabase* MarkDatabaseManager::getDefaultDatabase() {
+    if (databases.empty()) return nullptr;
+    return databases[0].db.get();
+}
+
+std::string MarkDatabaseManager::findMark(const std::string& markName, bool warnDuplicates) {
+    std::string firstMatch;
+    std::vector<std::string> allMatches;
+    
+    for (const auto& entry : databases) {
+        std::string path = entry.db->getMarkPath(markName);
+        if (!path.empty()) {
+            if (firstMatch.empty()) {
+                firstMatch = path;
+            }
+            if (warnDuplicates) {
+                std::string dbName = entry.alias.empty() ? entry.path : entry.alias;
+                allMatches.push_back(dbName + ":" + path);
+            }
+        }
+    }
+    
+    if (warnDuplicates && allMatches.size() > 1) {
+        for (size_t i = 1; i < allMatches.size(); i++) {
+            std::cerr << "setd: warning: duplicate mark \"" << markName 
+                      << "\" found in " << allMatches[i] << std::endl;
+        }
+    }
+    
+    return firstMatch;
+}
