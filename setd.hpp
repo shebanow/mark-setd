@@ -48,6 +48,7 @@ public:
     bool addPwd(const std::string& pwd);
     bool setMaxQueue(int max);
     bool listQueue() const;
+    bool clearQueue();
     std::string returnDest(const std::string& path) const;
     
     // Utility methods
