@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2025 Michael Shebanow and Sunil William Savkar
+ * 
+ * Original work:
+ * Copyright (c) 1991 Sunil William Savkar. All rights reserved.
+ */
+
 #include "mark_db.hpp"
 #include <iostream>
 #include <fstream>
