@@ -1,6 +1,6 @@
 # Changelog
 
-## Version 2.0 (2024)
+## Version 2.0 (2025)
 
 ### Major Changes
 - **Complete C++ rewrite**: Converted from C to modern C++ with classes and improved performance
@@ -23,7 +23,7 @@
 
 ### Credits
 - Original implementation: Sunil William Savkar (1991)
-- Modernization and enhancements: [Your Name] (2024)
+- Modernization and enhancements: Michael Shebanow (2025)
 
 ## Version 1.7 (1992)
 - Original version by Sunil William Savkar
