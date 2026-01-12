@@ -9,7 +9,9 @@
 #
 
 DESTDIR= $(HOME)
-BINDIR= $(DESTDIR)/bin/$$ARCH
+# For local installs, use .bin (hidden directory)
+# For system installs, override: make install BINDIR=/usr/local/bin
+BINDIR ?= $(DESTDIR)/.bin
 MANDIR = $(DESTDIR)/man/man1
 #MACHINE_TYPE = $$ARCH
 
@@ -63,12 +65,15 @@ clobber :	clean
 		rm -f $(TARGET2)
 
 installman: setd.1 mark.1
+	@mkdir -p $(MANDIR)
 	cp $(MAN1) $(MANDIR)/$(MAN1)
 	cp $(MAN2) $(MANDIR)/$(MAN2)
 
 installexec: all
+		@mkdir -p $(BINDIR)
 		cp $(TARGET1) $(BINDIR)/$(TARGET1)
 		cp $(TARGET2) $(BINDIR)/$(TARGET2)
+		@chmod +x $(BINDIR)/$(TARGET1) $(BINDIR)/$(TARGET2)
 
 install :	all installman installexec
 
