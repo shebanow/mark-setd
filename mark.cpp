@@ -9,6 +9,7 @@
 #include <iostream>
 #include <cstdlib>
 #include <cstring>
+#include <cctype>
 #include <unistd.h>
 #include <string>
 
@@ -71,10 +72,11 @@ int main(int argc, char* argv[]) {
                       << "-remove [mark]\t\tRemoves specified mark\n"
                       << "-v<ersion>\t\tPrints current version of the program\n"
                       << "-h<elp>\t\t\tThis help message\n"
-                      << "-reset\t\t\tClears all marks in the current environment\n"
+                      << "-reset\t\t\tClears all marks in the current environment (no confirmation)\n"
+                      << "-clear\t\t\tClears all marks with confirmation prompt\n"
                       << "-r<efresh>\t\tRefreshes all marks in the current environment\n"
                       << "-c [mark]\t\tMake mark cloud-based (backward compat, maps to cloud:mark)\n"
-                      << "\nexamples:\tmark xxx, mark cloud:xxx, mark -list, mark -reset, mark -rm xxx" << std::endl;
+                      << "\nexamples:\tmark xxx, mark cloud:xxx, mark -list, mark -reset, mark -clear, mark -rm xxx" << std::endl;
             return 0;
         } else if (arg == "-v" || arg == "-ver" || arg == "-version") {
             std::cout << "mark-setd version 2.0" << std::endl;
@@ -96,6 +98,30 @@ int main(int argc, char* argv[]) {
             }
         } else if (arg == "-reset") {
             db->resetMarks();
+        } else if (arg == "-clear") {
+            // Clear all marks with confirmation
+            std::cout << "This will remove ALL marks from the database." << std::endl;
+            std::cout << "Are you sure? (yes/no): ";
+            std::string confirmation;
+            std::getline(std::cin, confirmation);
+            
+            // Convert to lowercase for comparison
+            std::string lowerConfirmation = confirmation;
+            for (char& c : lowerConfirmation) {
+                c = std::tolower(c);
+            }
+            
+            if (lowerConfirmation == "yes" || lowerConfirmation == "y") {
+                if (db->resetMarks()) {
+                    std::cout << "All marks cleared." << std::endl;
+                } else {
+                    std::cerr << "mark: Failed to clear marks" << std::endl;
+                    return 1;
+                }
+            } else {
+                std::cout << "Operation cancelled." << std::endl;
+            }
+            return 0;
         } else if (arg == "-r" || arg == "-refresh" || arg == "-ref") {
             db->refreshMarks();
         } else if (arg == "-c") {

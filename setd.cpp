@@ -274,6 +274,14 @@ bool SetdDatabase::setMaxQueue(int max) {
     return writeToFile();
 }
 
+bool SetdDatabase::clearQueue() {
+    // Clear the queue
+    queueHead = nullptr;
+    queueLength = 0;
+    // Write empty queue to file (just maxQueue, no paths)
+    return writeToFile();
+}
+
 bool SetdDatabase::listQueue() const {
     std::cerr << "Current Queue (Max = " << maxQueue << ")" << std::endl;
     std::cerr << "-------------" << std::endl << std::endl;
@@ -521,6 +529,7 @@ int main(int argc, char* argv[]) {
                           << "%[path]\t\tAttempts change to subdirectory pathname of root one above\n"
                           << "-l<ist>\t\tLists previous directories up to maximum set list length\n"
                           << "-m<ax>\t\tSets the maximum depth of the past directory list\n"
+                          << "-clear\t\tClears the directory stack\n"
                           << "-w\t\tWarn about duplicate marks in multiple databases\n"
                           << "numeric\t\tChanges directory to specified list pos, or offset from top (-)\n"
                           << "\nexamples:\tcd ~savkar, cd %bin, cd -4, cd MARK_NAME, cd MARK_NAME/xxx" << std::endl;
@@ -530,6 +539,14 @@ int main(int argc, char* argv[]) {
                 return 0;
             } else if (arg == "-l" || arg == "-list") {
                 db.listQueue();
+                return 0;
+            } else if (arg == "-clear") {
+                if (db.clearQueue()) {
+                    std::cout << "Directory stack cleared." << std::endl;
+                } else {
+                    std::cerr << "setd: Failed to clear directory stack" << std::endl;
+                    return 1;
+                }
                 return 0;
             } else if (arg == "-m" || arg == "-max") {
                 if (i + 1 < argc) {
