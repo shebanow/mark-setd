@@ -225,7 +225,7 @@ Marks are stored in SQLite databases with the following schema:
 
 ## License
 
-Copyright (c) 2024 Michael Shebanow and Sunil William Savkar
+Copyright (c) 2025 Michael Shebanow and Sunil William Savkar
 
 This software is licensed under a proprietary license. All rights reserved.
 
@@ -316,9 +316,9 @@ Workflows run on push and pull requests. See `.github/workflows/` for workflow d
 
 ## Contributing
 
-This is currently a private project. Future contributions may be accepted when the project becomes public.
+Contributions are welcome! Please feel free to submit a Pull Request or open an issue for discussion.
 
 ## Support
 
-For issues and questions, please open an issue in the repository (when public) or contact the maintainers.
+For issues and questions, please open an issue in the repository or contact the maintainers.
 
