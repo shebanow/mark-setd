@@ -9,10 +9,10 @@
 #
 
 DESTDIR= $(HOME)
-# For local installs, use .bin (hidden directory)
+# For local installs, use ~/.local/bin (XDG convention)
 # For system installs, override: make install BINDIR=/usr/local/bin
-BINDIR ?= $(DESTDIR)/.bin
-MANDIR = $(DESTDIR)/man/man1
+BINDIR ?= $(DESTDIR)/.local/bin
+MANDIR = $(DESTDIR)/.local/share/man/man1
 #MACHINE_TYPE = $$ARCH
 
 TARGET1 = setd$(EXT)

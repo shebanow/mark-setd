@@ -3,8 +3,8 @@
 # Bash equivalent of SETD_CSHRC and DOT_cshrc_custom
 
 # Set up environment variables for setd and mark
-export SETD_DIR=$HOME/bin
-export MARK_DIR=$HOME/bin
+export SETD_DIR=$HOME/.local/bin
+export MARK_DIR=$HOME/.local/bin
 
 # Define the sh_path function (equivalent to the sh_path alias in csh)
 sh_path() {
